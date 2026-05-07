@@ -1,0 +1,2544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Typhex Webster — CARGO</title>
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+  <script type="text/babel" src="tweaks-panel.jsx"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&display=swap');
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --black: #000000;
+      --red: #c8402a;
+      --red-dim: rgba(200, 64, 42, 0.5);
+      --white: #f5f0eb;
+      --mono: 'Courier New', 'Courier Prime', monospace;
+    }
+
+    html, body {
+      background: var(--black);
+      color: var(--white);
+      font-family: var(--mono);
+      overflow: hidden;
+      height: 100%;
+      width: 100%;
+    }
+
+    #root {
+      width: 100vw;
+      height: 100dvh;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: #000; }
+    ::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+
+    /* Page transitions */
+    .page {
+      position: absolute;
+      inset: 0;
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+
+    /* LANDING */
+    .landing {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100dvh;
+      background: #000 url('uploads/stars-galaxy-2048x2048-10307.jpg') center center / cover no-repeat;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .landing-noise {
+      position: absolute;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.06'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    .landing-glow {
+      position: absolute;
+      width: 600px;
+      height: 600px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(200,64,42,0.12) 0%, transparent 70%);
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      z-index: 0;
+      animation: pulse 4s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 0.6; transform: translate(-50%, -50%) scale(1); }
+      50% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
+    }
+
+    .landing-scanlines {
+      position: absolute;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0,0,0,0.15) 2px,
+        rgba(0,0,0,0.15) 4px
+      );
+      pointer-events: none;
+      z-index: 2;
+    }
+
+    .landing-content {
+      position: relative;
+      z-index: 3;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      gap: 32px;
+    }
+
+    .landing-label {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.4em;
+      color: var(--red);
+      text-transform: uppercase;
+      opacity: 0;
+      animation: fadeInUp 0.8s ease forwards 0.3s;
+    }
+
+    .landing-title {
+      font-family: var(--mono);
+      font-size: clamp(36px, 6vw, 80px);
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--white);
+      line-height: 1;
+      opacity: 0;
+      animation: fadeInUp 0.8s ease forwards 0.6s;
+    }
+
+    .landing-title span {
+      display: block;
+      font-size: clamp(20px, 3vw, 40px);
+      font-weight: 400;
+      letter-spacing: 0.35em;
+      color: var(--red);
+      margin-top: 8px;
+    }
+
+    .enter-btn {
+      display: inline-block;
+      padding: 9px 0;
+      border: 2px solid var(--red);
+      border-radius: 100px;
+      font-family: var(--mono);
+      font-size: 21px;
+      letter-spacing: 0.2em;
+      color: var(--red);
+      background: transparent;
+      cursor: pointer;
+      text-transform: uppercase;
+      opacity: 0;
+      width: 132px;
+      text-align: center;
+      animation: fadeInUp 0.8s ease forwards 1s;
+      transition: background 0.3s, color 0.3s;
+    }
+
+    .enter-btn:hover {
+      background: var(--red);
+      color: #000;
+    }
+
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* HEADER */
+    .header {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: 100px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 32px;
+      z-index: 100;
+      background: linear-gradient(to bottom, rgba(0,0,0,0.9) 0%, transparent 100%);
+    }
+
+    .header-logo {
+      height: 130px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+
+    .hamburger-btn {
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      position: relative;
+      width: 32px;
+      height: 32px;
+      align-items: flex-start;
+      justify-content: center;
+    }
+
+    .hamburger-btn span {
+      display: block;
+      width: 26px;
+      height: 1.5px;
+      background: var(--red);
+      transition: transform 0.35s cubic-bezier(0.25,0.46,0.45,0.94),
+                  opacity 0.25s ease,
+                  width 0.3s ease;
+      transform-origin: center;
+      position: absolute;
+      left: 3px;
+    }
+
+    .hamburger-btn span:nth-child(1) { top: 6px; }
+    .hamburger-btn span:nth-child(2) { top: 15px; }
+    .hamburger-btn span:nth-child(3) { top: 24px; }
+
+    /* open = X state */
+    .hamburger-btn.is-open span:nth-child(1) {
+      transform: translateY(9px) rotate(45deg);
+    }
+    .hamburger-btn.is-open span:nth-child(2) {
+      opacity: 0;
+      width: 0;
+    }
+    .hamburger-btn.is-open span:nth-child(3) {
+      transform: translateY(-9px) rotate(-45deg);
+    }
+
+    .cart-btn {
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      padding: 8px;
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+    }
+
+    .cart-btn {
+      flex-direction: row;
+      align-items: center;
+    }
+
+    .cart-icon {
+      width: 36px;
+      height: 26px;
+      border: 1.5px solid var(--red);
+      border-radius: 6px;
+      position: relative;
+    }
+
+    .cart-icon::before {
+      content: '';
+      position: absolute;
+      left: 50%;
+      top: -8px;
+      transform: translateX(-50%);
+      width: 14px;
+      height: 8px;
+      border: 1.5px solid var(--red);
+      border-bottom: none;
+      border-radius: 4px 4px 0 0;
+    }
+
+    /* NAV OVERLAY */
+    .nav-overlay {
+      position: fixed;
+      inset: 0;
+      background: #000;
+      z-index: 200;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.4s ease;
+    }
+
+    .nav-overlay.open {
+      opacity: 1;
+      pointer-events: all;
+    }
+
+    .nav-close {
+      position: absolute;
+      top: 28px;
+      left: 28px;
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      padding: 8px;
+    }
+
+    .nav-close svg {
+      width: 24px;
+      height: 24px;
+      stroke: var(--red);
+      stroke-width: 1.5;
+    }
+
+    .nav-item {
+      padding: 22px 0;
+      border: 2px solid var(--red);
+      border-radius: 100px;
+      font-family: var(--mono);
+      font-size: 32px;
+      letter-spacing: 0.2em;
+      color: var(--red);
+      background: transparent;
+      cursor: pointer;
+      text-transform: uppercase;
+      transition: background 0.25s, color 0.25s;
+      width: 340px;
+      text-align: center;
+      display: block;
+    }
+
+    .nav-item:hover {
+      background: var(--red);
+      color: #000;
+    }
+
+    /* MAIN CONTENT */
+    .main-page {
+      padding-top: 100px;
+      min-height: 100dvh;
+      background: #000;
+    }
+
+    /* MUSIC GALLERY */
+    .music-gallery {
+      padding: 40px 0 120px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      min-height: calc(100dvh - 100px);
+    }
+
+    .gallery-header {
+      text-align: center;
+      margin-bottom: 40px;
+      padding: 0 24px;
+    }
+
+    .gallery-header h2 {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.45em;
+      color: var(--red);
+      text-transform: uppercase;
+    }
+
+    /* Swipe carousel */
+    .album-carousel-wrap {
+      position: relative;
+      width: 100%;
+      overflow: hidden;
+      cursor: grab;
+      user-select: none;
+    }
+    .album-carousel-wrap:active { cursor: grabbing; }
+
+    .album-carousel {
+      display: flex;
+      align-items: center;
+      transition: transform 0.45s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+      will-change: transform;
+    }
+
+    .album-card {
+      flex-shrink: 0;
+      position: relative;
+      transition: opacity 0.4s ease, transform 0.4s ease;
+    }
+
+    .album-card.center { z-index: 10; opacity: 1; transform: scale(1); }
+    .album-card.side   { z-index: 5;  opacity: 0.6; transform: scale(0.65); }
+    .album-card.far-side { z-index: 2; opacity: 0.1; transform: scale(0.45); }
+
+    .cover-placeholder {
+      background: #1a1a1a;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .cover-placeholder span {
+      font-family: var(--mono);
+      font-size: 9px;
+      letter-spacing: 0.2em;
+      color: #444;
+      text-align: center;
+      padding: 8px;
+    }
+
+    .album-title {
+      text-align: center;
+      font-family: var(--mono);
+      font-size: 14px;
+      letter-spacing: 0.3em;
+      color: var(--white);
+      text-transform: uppercase;
+      margin-top: 24px;
+    }
+
+    .album-availability {
+      text-align: center;
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.15em;
+      color: var(--red);
+      margin-top: 12px;
+    }
+
+    .album-availability a {
+      color: var(--red);
+      text-decoration: underline;
+    }
+
+    .carousel-dots {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 32px;
+    }
+
+    .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #333;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+
+    .dot.active { background: var(--red); }
+
+    /* ALBUM DETAIL */
+    .album-detail {
+      padding: 40px 24px 160px;
+      max-width: 480px;
+      margin: 0 auto;
+    }
+
+    @media (min-width: 768px) {
+      .album-detail {
+        max-width: 1400px;
+        padding: 40px 48px 160px;
+      }
+      /* keep the cover + title block centered at its mobile size */
+      .album-detail .detail-hero {
+        max-width: 480px;
+        margin: 0 auto;
+      }
+      /* tracklist + download-all stretch full width */
+      .album-detail .tracklist,
+      .album-detail .download-all-btn,
+      .album-detail .detail-meta {
+        max-width: none;
+      }
+    }
+
+    .album-detail .back-btn {
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.3em;
+      color: var(--red);
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 32px;
+      padding: 0;
+    }
+
+    .detail-cover {
+      width: 100%;
+      aspect-ratio: 1;
+      object-fit: cover;
+      display: block;
+    }
+
+    .detail-cover-placeholder {
+      width: 100%;
+      aspect-ratio: 1;
+      background: #1a1a1a;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .detail-info {
+      margin-top: 28px;
+      text-align: center;
+    }
+
+    .detail-title {
+      font-family: var(--mono);
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--white);
+    }
+
+    .detail-artist {
+      font-family: var(--mono);
+      font-size: 13px;
+      letter-spacing: 0.15em;
+      color: var(--red);
+      margin-top: 6px;
+    }
+
+    .detail-desc-toggle {
+      display: inline-block;
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.2em;
+      color: var(--red);
+      text-decoration: underline;
+      cursor: pointer;
+      margin-top: 10px;
+      background: none;
+      border: none;
+      padding: 0;
+    }
+
+    .detail-desc-text {
+      font-family: var(--mono);
+      font-size: 12px;
+      line-height: 1.7;
+      color: #888;
+      margin-top: 10px;
+      letter-spacing: 0.05em;
+    }
+
+    /* DESCRIPTION POPUP */
+    .desc-modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.78);
+      backdrop-filter: blur(4px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      animation: descOverlayIn 0.28s ease-out;
+      padding: 24px;
+      overflow: hidden;
+    }
+
+    @keyframes descOverlayIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    .desc-modal {
+      position: relative;
+      background: #0a0a0a;
+      border: none;
+      width: 100%;
+      max-width: 640px;
+      max-height: 80vh;
+      padding: 64px 48px 48px;
+      animation: descModalZoom 0.42s cubic-bezier(0.22, 1, 0.36, 1);
+      overflow-y: auto;
+      --tx: 0px;
+      --ty: 0px;
+    }
+
+    @keyframes descModalZoom {
+      from {
+        transform: translate(var(--tx), var(--ty)) scale(0.02);
+        opacity: 0;
+      }
+      to {
+        transform: translate(0, 0) scale(1);
+        opacity: 1;
+      }
+    }
+
+    .desc-modal-overlay.closing {
+      animation: descOverlayOut 0.32s ease-in forwards;
+    }
+
+    .desc-modal-overlay.closing .desc-modal {
+      animation: descModalZoomOut 0.32s cubic-bezier(0.64, 0, 0.78, 0) forwards;
+    }
+
+    @keyframes descOverlayOut {
+      from { opacity: 1; }
+      to { opacity: 0; }
+    }
+
+    @keyframes descModalZoomOut {
+      from {
+        transform: translate(0, 0) scale(1);
+        opacity: 1;
+      }
+      to {
+        transform: translate(var(--tx), var(--ty)) scale(0.02);
+        opacity: 0;
+      }
+    }
+
+    .desc-modal-close {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      width: 36px;
+      height: 36px;
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+    }
+
+    .desc-modal-close svg {
+      width: 20px;
+      height: 20px;
+      stroke: var(--red);
+      stroke-width: 1.5;
+      fill: none;
+    }
+
+    .desc-modal-close:hover svg {
+      stroke-width: 2;
+    }
+
+    .desc-modal-title {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.4em;
+      color: var(--red);
+      text-transform: uppercase;
+      text-align: center;
+      margin-bottom: 24px;
+    }
+
+    .desc-modal-text {
+      font-family: var(--mono);
+      font-size: 13px;
+      line-height: 1.85;
+      color: var(--red);
+      letter-spacing: 0.05em;
+      text-align: left;
+    }
+
+    @media (min-width: 768px) {
+      .desc-modal {
+        padding: 80px 72px 64px;
+      }
+      .desc-modal-text { font-size: 14px; }
+    }
+
+    .download-all-btn {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      margin-top: 20px;
+      margin-bottom: 4px;
+      padding-right: 0;
+    }
+
+    .dl-circle {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      border: 1.5px solid var(--red);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      background: transparent;
+      transition: background 0.25s;
+      flex-shrink: 0;
+    }
+
+    .dl-circle:hover { background: var(--red); }
+    .dl-circle:hover svg { stroke: #000; }
+
+    .dl-circle svg {
+      width: 18px;
+      height: 18px;
+      stroke: var(--red);
+      stroke-width: 1.5;
+      fill: none;
+    }
+
+    /* TRACKLIST */
+    .tracklist {
+      margin-top: 8px;
+      border-top: 1px solid #1a1a1a;
+    }
+
+    .track-row {
+      display: flex;
+      align-items: center;
+      padding: 14px 0;
+      border-bottom: 1px solid #1a1a1a;
+      gap: 16px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .track-row:hover { background: #0a0a0a; }
+    .track-row.playing .track-title { color: var(--red); }
+
+    .track-num {
+      font-family: var(--mono);
+      font-size: 13px;
+      color: #444;
+      width: 20px;
+      text-align: right;
+      flex-shrink: 0;
+    }
+
+    .track-row.playing .track-num {
+      color: var(--red);
+    }
+
+    .track-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .track-title {
+      font-family: var(--mono);
+      font-size: 13px;
+      letter-spacing: 0.15em;
+      color: var(--white);
+      text-transform: uppercase;
+    }
+
+    .track-sub {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      color: #555;
+      margin-top: 3px;
+    }
+
+    .track-dl {
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      padding: 4px;
+      flex-shrink: 0;
+      width: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .track-dl svg {
+      width: 18px;
+      height: 18px;
+      stroke: var(--red);
+      stroke-width: 1.5;
+      fill: none;
+    }
+
+    .track-play-indicator {
+      width: 18px;
+      height: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .track-play-indicator svg {
+      width: 14px;
+      height: 14px;
+      fill: var(--red);
+    }
+
+    .detail-meta {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      color: var(--red);
+      margin-top: 20px;
+    }
+
+    /* BOTTOM PLAYER */
+    .player-bar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: rgba(10,10,10,0.97);
+      border-top: 1px solid #1a1a1a;
+      padding: 12px 20px 16px;
+      z-index: 150;
+      backdrop-filter: blur(20px);
+    }
+
+    .player-inner {
+      max-width: 600px;
+      margin: 0 auto;
+    }
+
+    .player-progress {
+      width: 100%;
+      height: 2px;
+      background: #222;
+      border-radius: 1px;
+      cursor: pointer;
+      margin-bottom: 12px;
+    }
+
+    .player-progress-fill {
+      height: 100%;
+      background: var(--red);
+      border-radius: 1px;
+      transition: width 0.1s linear;
+    }
+
+    .player-controls {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .player-thumb {
+      width: 36px;
+      height: 36px;
+      object-fit: cover;
+      flex-shrink: 0;
+    }
+
+    .player-thumb-placeholder {
+      width: 36px;
+      height: 36px;
+      background: #1a1a1a;
+      flex-shrink: 0;
+    }
+
+    .player-track-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .player-track-title {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.15em;
+      color: var(--white);
+      text-transform: uppercase;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .player-track-artist {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      color: #555;
+      margin-top: 2px;
+    }
+
+    .player-btns {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .player-btn {
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      padding: 4px;
+      display: flex;
+      align-items: center;
+    }
+
+    .player-btn svg {
+      width: 20px;
+      height: 20px;
+      stroke: var(--white);
+      stroke-width: 1.5;
+      fill: none;
+    }
+
+    .player-btn.play-pause svg {
+      width: 24px;
+      height: 24px;
+    }
+
+    .player-time {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: #444;
+      letter-spacing: 0.05em;
+      white-space: nowrap;
+    }
+
+    /* CARGO PAGE */
+    .cargo-page {
+      padding: 80px 32px 120px;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    .cargo-page h1 {
+      font-family: var(--mono);
+      font-size: clamp(28px, 5vw, 60px);
+      font-weight: 700;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--white);
+      margin-bottom: 40px;
+    }
+
+    .cargo-text {
+      font-family: var(--mono);
+      font-size: 13px;
+      line-height: 2;
+      color: #888;
+      letter-spacing: 0.08em;
+      margin-bottom: 48px;
+    }
+
+    .cargo-visuals {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 2px;
+    }
+
+    .cargo-visual-item {
+      aspect-ratio: 1;
+      background: #111;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    .cargo-visual-item span {
+      font-family: var(--mono);
+      font-size: 9px;
+      letter-spacing: 0.15em;
+      color: #333;
+      text-align: center;
+      padding: 16px;
+    }
+
+    /* STORE PAGE */
+    .store-page {
+      padding: 80px 32px 120px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: calc(100dvh - 72px);
+    }
+
+    .store-soon {
+      text-align: center;
+    }
+
+    .store-soon h1 {
+      font-family: var(--mono);
+      font-size: clamp(24px, 5vw, 60px);
+      font-weight: 700;
+      letter-spacing: 0.35em;
+      text-transform: uppercase;
+      color: var(--white);
+      margin-bottom: 16px;
+    }
+
+    .store-soon p {
+      font-family: var(--mono);
+      font-size: 12px;
+      letter-spacing: 0.3em;
+      color: var(--red);
+      text-transform: uppercase;
+    }
+
+    .store-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 2px;
+      margin-top: 60px;
+      width: 100%;
+      max-width: 800px;
+    }
+
+    .store-item {
+      aspect-ratio: 0.85;
+      background: #0d0d0d;
+      border: 1px solid #1a1a1a;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .store-item span {
+      font-family: var(--mono);
+      font-size: 9px;
+      letter-spacing: 0.15em;
+      color: #222;
+      text-align: center;
+      padding: 12px;
+    }
+
+    .store-item .soon-tag {
+      font-size: 10px;
+      color: var(--red);
+      letter-spacing: 0.25em;
+    }
+
+    /* CONTACT PAGE */
+    .contact-page {
+      padding: 80px 32px 120px;
+      max-width: 520px;
+      margin: 0 auto;
+    }
+
+    .contact-page h1 {
+      font-family: var(--mono);
+      font-size: clamp(22px, 4vw, 48px);
+      font-weight: 700;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--white);
+      margin-bottom: 48px;
+    }
+
+    .contact-form {
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .form-group label {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.35em;
+      color: var(--red);
+      text-transform: uppercase;
+    }
+
+    .form-group input,
+    .form-group textarea {
+      background: transparent;
+      border: none;
+      border-bottom: 1px solid #333;
+      padding: 10px 0;
+      font-family: var(--mono);
+      font-size: 13px;
+      color: var(--white);
+      letter-spacing: 0.08em;
+      outline: none;
+      transition: border-color 0.3s;
+      width: 100%;
+    }
+
+    .form-group input:focus,
+    .form-group textarea:focus {
+      border-bottom-color: var(--red);
+    }
+
+    .form-group textarea {
+      resize: none;
+      height: 100px;
+    }
+
+    .submit-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      background: transparent;
+      border: 1.5px solid var(--red);
+      border-radius: 100px;
+      padding: 14px 40px;
+      font-family: var(--mono);
+      font-size: 12px;
+      letter-spacing: 0.35em;
+      color: var(--red);
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: background 0.3s, color 0.3s;
+      align-self: flex-start;
+      margin-top: 8px;
+    }
+
+    .submit-btn:hover {
+      background: var(--red);
+      color: #000;
+    }
+
+    /* Page transition animations */
+    .page-enter {
+      animation: pageIn 0.5s ease forwards;
+    }
+
+    @keyframes pageIn {
+      from { opacity: 0; transform: translateY(16px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .cargo-section-label {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.4em;
+      color: var(--red);
+      text-transform: uppercase;
+      margin-bottom: 12px;
+    }
+
+    .section-divider {
+      width: 40px;
+      height: 1px;
+      background: var(--red);
+      margin-bottom: 32px;
+    }
+
+    /* EQUALIZER animation */
+    .eq {
+      display: flex;
+      align-items: flex-end;
+      gap: 2px;
+      height: 14px;
+    }
+
+    .eq-bar {
+      width: 2px;
+      background: var(--red);
+      animation: eqAnim 0.8s ease-in-out infinite alternate;
+    }
+
+    .eq-bar:nth-child(1) { animation-delay: 0s; height: 60%; }
+    .eq-bar:nth-child(2) { animation-delay: 0.15s; height: 100%; }
+    .eq-bar:nth-child(3) { animation-delay: 0.3s; height: 40%; }
+
+    @keyframes eqAnim {
+      from { transform: scaleY(0.3); }
+      to { transform: scaleY(1); }
+    }
+
+    @media (max-width: 600px) {
+      .header { padding: 0 20px; }
+      .cargo-visuals { grid-template-columns: 1fr; }
+      .player-time { display: none; }
+      .nav-item { width: min(340px, 80vw); font-size: 26px; }
+    }
+
+    /* ── CARGO BAG ICON BUTTON ── */
+    .bag-btn {
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      padding: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* ── MEDIA PANEL ── */
+    .media-panel-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      z-index: 190;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.35s ease;
+    }
+    .media-panel-backdrop.open {
+      opacity: 1;
+      pointer-events: all;
+    }
+
+    .media-panel {
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: min(420px, 100vw);
+      height: 100dvh;
+      background: #0a0a0a;
+      border-left: 1px solid #1c1c1c;
+      z-index: 195;
+      display: flex;
+      flex-direction: column;
+      transform: translateX(100%);
+      transition: transform 0.4s cubic-bezier(0.25,0.46,0.45,0.94);
+      overflow: hidden;
+    }
+    .media-panel.open {
+      transform: translateX(0);
+    }
+
+    .media-panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 24px 24px 16px;
+      border-bottom: 1px solid #1c1c1c;
+      flex-shrink: 0;
+    }
+
+    .media-panel-title {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.4em;
+      color: var(--red);
+      text-transform: uppercase;
+    }
+
+    .media-panel-close {
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      padding: 4px;
+      line-height: 1;
+    }
+    .media-panel-close svg {
+      width: 20px;
+      height: 20px;
+      stroke: #666;
+      stroke-width: 1.5;
+      display: block;
+    }
+    .media-panel-close:hover svg { stroke: var(--white); }
+
+    .media-panel-tabs {
+      display: flex;
+      gap: 0;
+      border-bottom: 1px solid #1c1c1c;
+      flex-shrink: 0;
+    }
+    .media-tab {
+      flex: 1;
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      padding: 12px 8px;
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.25em;
+      color: #444;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: color 0.2s, border-color 0.2s;
+    }
+    .media-tab.active {
+      color: var(--white);
+      border-bottom-color: var(--red);
+    }
+    .media-tab:hover { color: #888; }
+
+    .media-panel-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+    }
+
+    .media-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 3px;
+    }
+
+    .media-cell {
+      aspect-ratio: 1;
+      background: #111;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+      border: 1px solid #1a1a1a;
+      transition: border-color 0.2s;
+    }
+    .media-cell:hover { border-color: #333; }
+    .media-cell:hover .media-cell-overlay { opacity: 1; }
+
+    .media-cell-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(200,64,42,0.08);
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+
+    .media-cell-icon {
+      width: 28px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .media-cell-icon svg {
+      width: 28px;
+      height: 28px;
+      stroke: #333;
+      stroke-width: 1;
+      fill: none;
+    }
+    .media-cell span {
+      font-family: var(--mono);
+      font-size: 8px;
+      letter-spacing: 0.15em;
+      color: #2a2a2a;
+      text-align: center;
+      padding: 0 8px;
+      text-transform: uppercase;
+    }
+
+    .media-cell-label {
+      position: absolute;
+      bottom: 6px;
+      left: 0; right: 0;
+      text-align: center;
+      font-family: var(--mono);
+      font-size: 8px;
+      letter-spacing: 0.12em;
+      color: var(--red);
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    .media-cell:hover .media-cell-label { opacity: 1; }
+
+    .media-add-btn {
+      grid-column: 1 / -1;
+      background: transparent;
+      border: 1px dashed #222;
+      padding: 20px;
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.3em;
+      color: #333;
+      cursor: pointer;
+      text-transform: uppercase;
+      transition: border-color 0.2s, color 0.2s;
+    }
+    .media-add-btn:hover { border-color: var(--red); color: var(--red); }
+
+    .media-empty {
+      text-align: center;
+      padding: 60px 20px;
+    }
+    .media-empty p {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.2em;
+      color: #2a2a2a;
+      text-transform: uppercase;
+      line-height: 2;
+    }
+    /* SPACESHIP */
+    .spaceship {
+      position: absolute;
+      z-index: 2;
+      pointer-events: none;
+      transition: opacity 0.6s ease;
+    }
+    .lightbox {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.95);
+      z-index: 300;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      animation: fadeInLB 0.2s ease;
+    }
+    @keyframes fadeInLB { from{opacity:0} to{opacity:1} }
+    .lightbox-img {
+      max-width: 88vw;
+      max-height: 82vh;
+      object-fit: contain;
+      display: block;
+      box-shadow: 0 0 80px rgba(0,0,0,0.8);
+    }
+    .lightbox-close {
+      position: absolute;
+      top: 24px; right: 24px;
+      background: transparent;
+      border: none; cursor: pointer; padding: 8px;
+    }
+    .lightbox-close svg { width:24px;height:24px;stroke:#666;stroke-width:1.5; }
+    .lightbox-close:hover svg { stroke: var(--white); }
+    .lightbox-arrow {
+      position: absolute;
+      top: 50%; transform: translateY(-50%);
+      background: transparent;
+      border: 1.5px solid #333;
+      border-radius: 50%;
+      width: 48px; height: 48px;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .lightbox-arrow:hover { border-color: var(--red); background: rgba(200,64,42,0.1); }
+    .lightbox-arrow svg { width:20px;height:20px;stroke:var(--white);stroke-width:1.5;fill:none; }
+    .lightbox-arrow.prev { left: 24px; }
+    .lightbox-arrow.next { right: 24px; }
+    .lightbox-label {
+      position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%);
+      font-family: var(--mono); font-size: 10px; letter-spacing: 0.3em;
+      color: #444; text-transform: uppercase; white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef, useCallback } = React;
+
+    // ─── DATA ───────────────────────────────────────────────────────────
+    const ALBUMS = [
+      {
+        id: 'psy-atlas',
+        title: 'PSY-ATLAS',
+        artist: 'Typhex Webster',
+        label: 'CARGO',
+        year: '2024',
+        availability: 'apple music & spotify',
+        availabilityLinks: { apple: '#', spotify: '#' },
+        description: 'PSY-ATLAS is a sonic journey through fragmented realities and altered states of perception. Produced entirely by Typhex Webster, the project blends hypnotic textures with raw energy.',
+        totalTracks: 8,
+        duration: '34 Min',
+        coverColor: '#8B3A1A',
+        tracks: [
+          { id: 1, title: 'Σ-44', artist: 'Typhex Webster', duration: '3:42', file: null },
+          { id: 2, title: 'Σ-108', artist: 'Typhex Webster', duration: '4:18', file: null },
+          { id: 3, title: 'NEURAL DRIFT', artist: 'Typhex Webster', duration: '3:55', file: null },
+          { id: 4, title: 'ATLAS VOID', artist: 'Typhex Webster', duration: '5:02', file: null },
+          { id: 5, title: 'PSYCHE LOOP', artist: 'Typhex Webster', duration: '3:30', file: null },
+          { id: 6, title: 'FRACTURED EYE', artist: 'Typhex Webster', duration: '4:11', file: null },
+          { id: 7, title: 'STATIC MIND', artist: 'Typhex Webster', duration: '3:28', file: null },
+          { id: 8, title: 'TERMINAL', artist: 'Typhex Webster', duration: '5:44', file: null },
+        ]
+      },
+      {
+        id: 'twin-sun-static',
+        title: 'TWIN SUN STATIC',
+        artist: 'Typhex Webster',
+        label: 'CARGO',
+        year: '2024',
+        availability: 'not available on any other platform',
+        availabilityLinks: null,
+        description: 'Twin Sun Static is an exclusive release, only available through CARGO. A raw and unfiltered collection of instrumental beats, capturing the dual nature of light and shadow.',
+        totalTracks: 7,
+        duration: '29 Min',
+        coverColor: '#C65A20',
+        tracks: [
+          { id: 1, title: 'TWIN SUN I', artist: 'Typhex Webster', duration: '4:22', file: null },
+          { id: 2, title: 'STATIC WAVE', artist: 'Typhex Webster', duration: '3:55', file: null },
+          { id: 3, title: 'SOLAR BURN', artist: 'Typhex Webster', duration: '4:10', file: null },
+          { id: 4, title: 'DESERT SIGNAL', artist: 'Typhex Webster', duration: '3:44', file: null },
+          { id: 5, title: 'TWIN SUN II', artist: 'Typhex Webster', duration: '5:01', file: null },
+          { id: 6, title: 'GOLD FREQUENCY', artist: 'Typhex Webster', duration: '3:28', file: null },
+          { id: 7, title: 'LAST LIGHT', artist: 'Typhex Webster', duration: '4:20', file: null },
+        ]
+      },
+      {
+        id: 'camels-n-zebras',
+        title: "CAMELS N' ZEBRAS",
+        artist: 'Typhex Webster & keinzeitstudent',
+        label: 'CARGO',
+        year: '2026',
+        availability: 'not available on any other platform',
+        availabilityLinks: null,
+        description: 'A collaborative project between Typhex Webster and keinzeitstudent. 21 tracks recorded across sessions in multiple cities — raw, cinematic, and unapologetic.',
+        totalTracks: 21,
+        duration: '1h 23 Min',
+        coverColor: '#1A3A6B',
+        tracks: [
+          { id: 1, title: 'STARGAZING', artist: 'Typhex Webster & keinzeitstudent', duration: '3:44', file: null },
+          { id: 2, title: 'BE THERE', artist: 'Typhex Webster', duration: '4:02', file: null },
+          { id: 3, title: 'QUAD (feat. Sanyx)', artist: 'Typhex Webster & keinzeitstudent', duration: '3:28', file: null },
+          { id: 4, title: 'TA-GA-TE-GE', artist: 'Typhex Webster & keinzeitstudent', duration: '5:11', file: null },
+          { id: 5, title: 'FIZZY', artist: 'Typhex Webster & keinzeitstudent', duration: '3:55', file: null },
+          { id: 6, title: 'MARATHON', artist: 'Typhex Webster', duration: '4:30', file: null },
+          { id: 7, title: 'SANDSTORM', artist: 'Typhex Webster & keinzeitstudent', duration: '3:18', file: null },
+        ]
+      }
+    ];
+
+    // ─── ICONS ──────────────────────────────────────────────────────────
+
+    // Centre logo: real camel figurine photo
+    const CamelLogo = () => (
+      <img
+        src="uploads/juma.png"
+        alt="CARGO"
+        style={{
+          height: 130,
+          width: 'auto',
+          display: 'block',
+          objectFit: 'contain',
+        }}
+      />
+    );
+
+    // Right-side icon: two overlapping rounded rectangles (CARGO brand mark)
+    const CargoMarkIcon = () => (
+      <svg viewBox="0 0 56 42" fill="none" xmlns="http://www.w3.org/2000/svg" style={{width:48,height:36,transform:'scaleX(-1)'}}>
+        <rect x="2" y="2" width="36" height="24" rx="6" stroke="var(--red)" strokeWidth="1.8" fill="none"/>
+        <rect x="18" y="16" width="36" height="24" rx="6" stroke="var(--red)" strokeWidth="1.8" fill="none"/>
+      </svg>
+    );
+
+    const DownloadIcon = () => (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <path d="M12 3v13M7 11l5 5 5-5M4 20h16"/>
+      </svg>
+    );
+
+    const PlayIcon = () => (
+      <svg viewBox="0 0 24 24" fill="currentColor">
+        <polygon points="5,3 19,12 5,21"/>
+      </svg>
+    );
+
+    const PauseIcon = () => (
+      <svg viewBox="0 0 24 24" fill="currentColor">
+        <rect x="6" y="4" width="4" height="16"/>
+        <rect x="14" y="4" width="4" height="16"/>
+      </svg>
+    );
+
+    const PrevIcon = () => (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <polygon points="19,5 9,12 19,19" fill="currentColor" stroke="none"/>
+        <line x1="5" y1="5" x2="5" y2="19" stroke="currentColor" strokeWidth="2"/>
+      </svg>
+    );
+
+    const NextIcon = () => (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <polygon points="5,5 15,12 5,19" fill="currentColor" stroke="none"/>
+        <line x1="19" y1="5" x2="19" y2="19" stroke="currentColor" strokeWidth="2"/>
+      </svg>
+    );
+
+    const EQ = () => (
+      <div className="eq">
+        <div className="eq-bar"/>
+        <div className="eq-bar"/>
+        <div className="eq-bar"/>
+      </div>
+    );
+
+    // ─── COVER PLACEHOLDER ──────────────────────────────────────────────
+    const COVER_IMAGES = {
+      'camels-n-zebras': "uploads/camels-n-zebras.png",
+      'twin-sun-static': "uploads/twin-sun-static.png",
+      'psy-atlas': "uploads/psy_atlas.png",
+    };
+
+    const CoverPlaceholder = ({ album, size = 280 }) => {
+      const imgSrc = COVER_IMAGES[album.id];
+      if (imgSrc) {
+        return (
+          <img
+            src={imgSrc}
+            alt={album.title}
+            style={{
+              width: size, height: size,
+              objectFit: 'cover',
+              display: 'block',
+              flexShrink: 0,
+            }}
+          />
+        );
+      }
+      const colors = {
+        'psy-atlas': ['#8B3A1A','#C65A20','#4A1A0A'],
+        'twin-sun-static': ['#C65A20','#DAA520','#4A2A00'],
+      };
+      const [c1, c2, c3] = colors[album.id] || ['#333','#555','#111'];
+      return (
+        <div style={{
+          width: size, height: size,
+          background: `radial-gradient(circle at 40% 40%, ${c1}, ${c3})`,
+          display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center',
+          position: 'relative', overflow: 'hidden',
+          flexShrink: 0
+        }}>
+          <div style={{
+            position: 'absolute', inset: 0,
+            backgroundImage: `repeating-linear-gradient(45deg, transparent, transparent 2px, rgba(255,255,255,0.02) 2px, rgba(255,255,255,0.02) 4px)`
+          }}/>
+          <div style={{
+            fontFamily: 'monospace', fontSize: 9, letterSpacing: '0.1em',
+            color: 'rgba(255,255,255,0.2)', textAlign: 'center', padding: 16,
+            lineHeight: 1.6, position: 'relative', zIndex: 1
+          }}>
+            [ cover art ]<br/>{album.title}
+          </div>
+          <div style={{
+            position: 'absolute', bottom: 8, left: 8,
+            fontFamily: 'monospace', fontSize: 8, letterSpacing: '0.15em',
+            color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase'
+          }}>CARGO</div>
+        </div>
+      );
+    };
+
+    // ─── MEDIA PANEL ────────────────────────────────────────────────────
+    const MediaPanel = ({ open, onClose }) => {
+      const [tab, setTab] = React.useState('images');
+      const [lightboxIdx, setLightboxIdx] = React.useState(null);
+      const [items, setItems] = React.useState({
+        images: [
+          { id: 1, type: 'image', label: 'fruit', src: 'uploads/fruit.png' },
+          { id: 2, type: 'image', label: 'atlas war', src: 'uploads/atlas_war.png' },
+          { id: 3, type: 'image', label: 'visual 03', src: null },
+          { id: 4, type: 'image', label: 'visual 04', src: null },
+        ],
+        videos: [
+          { id: 1, type: 'video', label: 'video 01', src: null },
+          { id: 2, type: 'video', label: 'video 02', src: null },
+        ]
+      });
+
+      const ImageIcon = () => (
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+      );
+      const VideoIcon = () => (
+        <svg viewBox="0 0 24 24"><rect x="2" y="4" width="15" height="16" rx="2"/><path d="M17 8l5-3v14l-5-3V8z"/></svg>
+      );
+      const PlusIcon = () => (
+        <svg viewBox="0 0 24 24" stroke="#444" strokeWidth="1.2" fill="none" style={{width:20,height:20}}><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      );
+
+      const currentItems = items[tab];
+      const imgItems = currentItems.filter(i => i.src);
+
+      const openLightbox = (idx) => setLightboxIdx(idx);
+      const closeLightbox = () => setLightboxIdx(null);
+      const lbPrev = () => setLightboxIdx(i => (i - 1 + imgItems.length) % imgItems.length);
+      const lbNext = () => setLightboxIdx(i => (i + 1) % imgItems.length);
+
+      // keyboard nav
+      React.useEffect(() => {
+        if (lightboxIdx === null) return;
+        const onKey = (e) => {
+          if (e.key === 'ArrowLeft') lbPrev();
+          if (e.key === 'ArrowRight') lbNext();
+          if (e.key === 'Escape') closeLightbox();
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+      }, [lightboxIdx]);
+
+      return (
+        <>
+          <div className={`media-panel-backdrop ${open ? 'open' : ''}`} onClick={onClose}/>
+          <div className={`media-panel ${open ? 'open' : ''}`}>
+            <div className="media-panel-header">
+              <div className="media-panel-title">CARGO — MEDIA</div>
+              <button className="media-panel-close" onClick={onClose}>
+                <svg viewBox="0 0 24 24" fill="none">
+                  <line x1="4" y1="4" x2="20" y2="20"/>
+                  <line x1="20" y1="4" x2="4" y2="20"/>
+                </svg>
+              </button>
+            </div>
+
+            <div className="media-panel-tabs">
+              {['images','videos'].map(t => (
+                <button key={t} className={`media-tab ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>
+                  {t}
+                </button>
+              ))}
+            </div>
+
+            <div className="media-panel-body">
+              {currentItems.length === 0 ? (
+                <div className="media-empty">
+                  <p>No {tab} yet.<br/>Click + to add</p>
+                </div>
+              ) : (
+                <div className="media-grid">
+                  {currentItems.map((item, idx) => {
+                    const imgIdx = imgItems.indexOf(item);
+                    return (
+                    <div key={item.id} className="media-cell" onClick={() => item.src && openLightbox(imgIdx)} style={{cursor: item.src ? 'pointer' : 'default'}}>
+                      <div className="media-cell-overlay"/>
+                      {item.src ? (
+                        <img src={item.src} alt={item.label} style={{width:'100%',height:'100%',objectFit:'cover',position:'absolute',inset:0}}/>
+                      ) : (
+                        <div className="media-cell-icon">
+                          {item.type === 'image' ? <ImageIcon/> : <VideoIcon/>}
+                        </div>
+                      )}
+                      {!item.src && <span>{item.label}</span>}
+                      <div className="media-cell-label">{item.src ? item.label : 'click to replace'}</div>
+                    </div>
+                    );
+                  })}
+                  <button
+                    className="media-add-btn"
+                    onClick={() => {
+                      const id = Date.now();
+                      const label = `${tab.slice(0,-1)} 0${currentItems.length + 1}`;
+                      setItems(prev => ({
+                        ...prev,
+                        [tab]: [...prev[tab], { id, type: tab.slice(0,-1), label }]
+                      }));
+                    }}
+                  >
+                    <PlusIcon/> &nbsp; ADD {tab.slice(0,-1).toUpperCase()}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+        {lightboxIdx !== null && imgItems[lightboxIdx] && (
+          <div className="lightbox" onClick={closeLightbox}>
+            <img
+              className="lightbox-img"
+              src={imgItems[lightboxIdx].src}
+              alt={imgItems[lightboxIdx].label}
+              onClick={e => e.stopPropagation()}
+            />
+            <button className="lightbox-close" onClick={closeLightbox}>
+              <svg viewBox="0 0 24 24" fill="none"><line x1="4" y1="4" x2="20" y2="20"/><line x1="20" y1="4" x2="4" y2="20"/></svg>
+            </button>
+            {imgItems.length > 1 && (
+              <>
+                <button className="lightbox-arrow prev" onClick={e => { e.stopPropagation(); lbPrev(); }}>
+                  <svg viewBox="0 0 24 24"><polyline points="15,18 9,12 15,6"/></svg>
+                </button>
+                <button className="lightbox-arrow next" onClick={e => { e.stopPropagation(); lbNext(); }}>
+                  <svg viewBox="0 0 24 24"><polyline points="9,18 15,12 9,6"/></svg>
+                </button>
+              </>
+            )}
+            <div className="lightbox-label">{lightboxIdx + 1} / {imgItems.length} — {imgItems[lightboxIdx].label}</div>
+          </div>
+        )}
+      </>
+      );
+    };
+
+    // ─── HEADER ─────────────────────────────────────────────────────────
+    const Header = ({ onMenuOpen, onNavigate, onBagOpen, navOpen }) => (
+      <header className="header">
+        <button className={`hamburger-btn ${navOpen ? 'is-open' : ''}`} onClick={onMenuOpen} aria-label="Menu">
+          <span/><span/><span/>
+        </button>
+        <div className="header-logo" onClick={() => onNavigate('landing')} style={{cursor:'pointer'}}>
+          <CamelLogo/>
+        </div>
+        <button className="bag-btn" aria-label="Media" onClick={onBagOpen}>
+          <CargoMarkIcon/>
+        </button>
+      </header>
+    );
+
+    const NavOverlay = ({ open, onClose, onNavigate }) => {
+      const items = ['MUSIC', 'CARGO', 'STORE', 'CONTACT'];
+      return (
+        <div className={`nav-overlay ${open ? 'open' : ''}`}>
+          <button className="nav-close" onClick={onClose} aria-label="Close menu">
+            <svg viewBox="0 0 24 24" fill="none">
+              <line x1="4" y1="4" x2="20" y2="20"/>
+              <line x1="20" y1="4" x2="4" y2="20"/>
+            </svg>
+          </button>
+          {items.map(item => (
+            <button key={item} className="nav-item" onClick={() => { onNavigate(item.toLowerCase()); onClose(); }}>
+              {item}
+            </button>
+          ))}
+        </div>
+      );
+    };
+
+    // ─── LANDING PAGE ───────────────────────────────────────────────────
+    const LandingPage = ({ onEnter, scanlines = true, glow = true, tweaks = {} }) => {
+      const [ship, setShip] = React.useState(null);
+      const rafRef = React.useRef(null);
+      const startRef = React.useRef(null);
+      const shipDataRef = React.useRef(null);
+
+      const launchShip = React.useCallback(() => {
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        // Always fly from top-left to bottom-right
+        const sx = Math.random() * vw * 0.4; // start in left 40%
+        const sy = -80;
+        const ex = vw * 0.6 + Math.random() * vw * 0.4; // end in right 60%
+        const ey = vh + 80;
+        const dx = ex - sx;
+        const dy = ey - sy;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        const duration = dist / 200;
+        const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+
+        shipDataRef.current = { sx, sy, ex, ey, dx, dy, duration, angle };
+        if (rafRef.current) cancelAnimationFrame(rafRef.current);
+        startRef.current = null;
+
+        const animate = (ts) => {
+          if (!startRef.current) startRef.current = ts;
+          const elapsed = (ts - startRef.current) / 1000;
+          const t = Math.min(elapsed / duration, 1);
+          const d = shipDataRef.current;
+          const x = d.sx + d.dx * t;
+          const y = d.sy + d.dy * t;
+          const opacity = t < 0.08 ? t / 0.08 : t > 0.92 ? (1 - t) / 0.08 : 1;
+          setShip({ x, y, opacity, angle: d.angle });
+          if (t < 1) rafRef.current = requestAnimationFrame(animate);
+          else setShip(null);
+        };
+        rafRef.current = requestAnimationFrame(animate);
+      }, []);
+
+      React.useEffect(() => {
+        const first = setTimeout(launchShip, 3000);
+        const interval = setInterval(launchShip, 10000);
+        return () => {
+          clearTimeout(first);
+          clearInterval(interval);
+          if (rafRef.current) cancelAnimationFrame(rafRef.current);
+        };
+      }, []);
+
+      return (
+      <div className="landing">
+        {glow && <div className="landing-glow"/>}
+        <div className="landing-noise"/>
+        {scanlines && <div className="landing-scanlines"/>}
+
+        {ship && (
+          <div
+            className="spaceship"
+            style={{
+              left: ship.x,
+              top: ship.y,
+              opacity: ship.opacity,
+              perspective: '600px',
+            }}
+          >
+            <img
+              src="uploads/Naboo_Royal_Starship_SWE.webp"
+              alt=""
+              style={{
+                width: 130,
+                height: 'auto',
+                display: 'block',
+                transform: `rotate(${ship.angle}deg)`,
+                filter: 'drop-shadow(0 6px 16px rgba(160,160,255,0.5))',
+                transformOrigin: 'center center',
+              }}
+            />
+          </div>
+        )}
+
+        <div className="landing-content">
+          <button className="enter-btn" onClick={onEnter}>{tweaks.landingBtn || 'ENTER'}</button>
+        </div>
+      </div>
+      );
+    };
+
+    // ─── HUB PAGE ───────────────────────────────────────────────────────
+    const HubPage = ({ onNavigate, tweaks }) => {
+      const items = ['MUSIC', 'CARGO', 'STORE', 'CONTACT'];
+      const STORE_URL = 'https://your-store.com';
+      return (
+        <div style={{
+          display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center',
+          minHeight: 'calc(100dvh - 72px)',
+          gap: tweaks.navGap, padding: '60px 24px', marginTop: tweaks.navVerticalOffset
+        }} className="page-enter">
+          {items.map((item, i) => (
+            <button
+              key={item}
+              className="nav-item"
+              style={{
+                opacity: 0,
+                animation: `fadeInUp 0.5s ease forwards ${i * 0.08 + 0.1}s`,
+                fontSize: tweaks.navFontSize * tweaks.navScale,
+                width: tweaks.navBoxWidth * tweaks.navScale,
+                paddingTop: tweaks.navBoxPadding * tweaks.navScale,
+                paddingBottom: tweaks.navBoxPadding * tweaks.navScale,
+                borderRadius: 100,
+              }}
+              onClick={() => {
+                if (item === 'STORE') { window.open(STORE_URL, '_blank', 'noopener,noreferrer'); }
+                else { onNavigate(item.toLowerCase()); }
+              }}
+            >
+              {item}
+            </button>
+          ))}
+        </div>
+      );
+    };
+
+    // ─── MUSIC GALLERY ──────────────────────────────────────────────────
+    const MusicGallery = ({ onSelectAlbum, tweaks }) => {
+      const [active, setActive] = useState(0);
+      const [dragging, setDragging] = useState(false);
+      const [dragStart, setDragStart] = useState(0);
+      const [dragDelta, setDragDelta] = useState(0);
+      const [vw, setVw] = useState(800);
+      const wrapRef = useRef(null);
+      const album = ALBUMS[active];
+
+      useEffect(() => {
+        setVw(window.innerWidth);
+        const onResize = () => setVw(window.innerWidth);
+        window.addEventListener('resize', onResize);
+        return () => window.removeEventListener('resize', onResize);
+      }, []);
+
+      // card size
+      const CARD = 420;
+      const sideScale = 0.65;
+      const GAP = Math.max(0, Math.round(vw / 2 - CARD / 2 - CARD * sideScale * tweaks.carouselSideVisibility));
+      const SIDE_VISIBLE = 80;
+
+      const getPos = (i) => {
+        const diff = ((i - active) + ALBUMS.length) % ALBUMS.length;
+        if (diff === 0) return 'center';
+        if (diff === 1 || diff === ALBUMS.length - 1) return 'side';
+        return 'far-side';
+      };
+
+      const goTo = (i) => setActive(((i % ALBUMS.length) + ALBUMS.length) % ALBUMS.length);
+
+      // pointer events for swipe
+      const onPointerDown = (e) => {
+        setDragging(true);
+        setDragStart(e.clientX ?? e.touches?.[0]?.clientX ?? 0);
+        setDragDelta(0);
+      };
+      const onPointerMove = (e) => {
+        if (!dragging) return;
+        const x = e.clientX ?? e.touches?.[0]?.clientX ?? 0;
+        setDragDelta(x - dragStart);
+      };
+      const onPointerUp = () => {
+        if (!dragging) return;
+        setDragging(false);
+        if (dragDelta < -60) goTo(active + 1);
+        else if (dragDelta > 60) goTo(active - 1);
+        setDragDelta(0);
+      };
+
+      // compute translateX so active is centred
+      const centreOffset = vw / 2 - CARD / 2;
+      const baseTranslate = centreOffset - active * (CARD + GAP);
+      const currentTranslate = baseTranslate + (dragging ? dragDelta : 0);
+
+      return (
+        <div className="music-gallery page-enter">
+          <div
+            className="album-carousel-wrap"
+            ref={wrapRef}
+            onMouseDown={onPointerDown}
+            onMouseMove={onPointerMove}
+            onMouseUp={onPointerUp}
+            onMouseLeave={onPointerUp}
+            onTouchStart={e => onPointerDown(e.touches[0])}
+            onTouchMove={e => onPointerMove(e.touches[0])}
+            onTouchEnd={onPointerUp}
+          >
+            <div
+              className="album-carousel"
+              style={{
+                transform: `translateX(${currentTranslate}px)`,
+                transition: dragging ? 'none' : 'transform 0.45s cubic-bezier(0.25,0.46,0.45,0.94)',
+                gap: GAP,
+                paddingTop: 20, paddingBottom: 40,
+              }}
+            >
+              {ALBUMS.map((a, i) => {
+                const pos = getPos(i);
+                return (
+                  <div
+                    key={a.id}
+                    className={`album-card ${pos}`}
+                    style={{ width: CARD, flexShrink: 0, cursor: pos === 'center' ? 'pointer' : 'grab' }}
+                    onClick={() => {
+                      if (!dragging && Math.abs(dragDelta) < 8) {
+                        if (pos === 'center') onSelectAlbum(a);
+                        else if (pos === 'side') {
+                          const diff = ((i - active) + ALBUMS.length) % ALBUMS.length;
+                          goTo(diff === 1 ? active + 1 : active - 1);
+                        }
+                      }
+                    }}
+                  >
+                    <CoverPlaceholder album={a} size={CARD}/>
+                    <div style={{
+                      textAlign: 'center',
+                      fontFamily: 'var(--mono)',
+                      fontSize: tweaks.albumTitleSize,
+                      letterSpacing: tweaks.albumTitleLetterSpacing + 'em',
+                      color: 'var(--white)',
+                      textTransform: 'uppercase',
+                      marginTop: tweaks.albumTitleOffset + 20,
+                      marginBottom: tweaks.albumTitleMarginBottom,
+                      opacity: pos === 'center' ? 1 : 0,
+                      transition: 'opacity 0.4s ease',
+                      pointerEvents: 'none',
+                    }}>{a.title}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="album-availability">
+            {album.availabilityLinks
+              ? <>also available at <a href={album.availabilityLinks.apple}>apple music</a> &amp; <a href={album.availabilityLinks.spotify}>spotify</a></>
+              : album.availability
+            }
+          </div>
+
+          <div className="carousel-dots">
+            {ALBUMS.map((_, i) => (
+              <div key={i} className={`dot ${i === active ? 'active' : ''}`} onClick={() => goTo(i)}/>
+            ))}
+          </div>
+        </div>
+      );
+    };
+
+    // ─── ALBUM DETAIL ───────────────────────────────────────────────────
+    const AlbumDetail = ({ album, onBack, onPlay, currentTrack, isPlaying }) => {
+      const [descOpen, setDescOpen] = useState(false);
+      const [descClosing, setDescClosing] = useState(false);
+      const [descOrigin, setDescOrigin] = useState({ tx: '0px', ty: '0px' });
+
+      const openDesc = (e) => {
+        const rect = e.currentTarget.getBoundingClientRect();
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        const vx = window.innerWidth / 2;
+        const vy = window.innerHeight / 2;
+        setDescOrigin({
+          tx: `${cx - vx}px`,
+          ty: `${cy - vy}px`,
+        });
+        setDescClosing(false);
+        setDescOpen(true);
+      };
+
+      const closeDesc = () => {
+        if (descClosing) return;
+        setDescClosing(true);
+        setTimeout(() => {
+          setDescOpen(false);
+          setDescClosing(false);
+        }, 320);
+      };
+
+      const handleDownloadAll = () => {
+        alert('Download all: Dateien werden bereitgestellt sobald MP3s hochgeladen sind.');
+      };
+
+      const handleDownloadTrack = (track) => {
+        if (track.file) {
+          const a = document.createElement('a');
+          a.href = track.file;
+          a.download = `${track.title}.mp3`;
+          a.click();
+        } else {
+          alert(`Download: "${track.title}" — MP3 noch nicht hinterlegt.`);
+        }
+      };
+
+      return (
+        <div className="album-detail page-enter">
+          <button className="back-btn" onClick={onBack}>
+            ← BACK
+          </button>
+
+          <div className="detail-hero">
+            <div style={{display:'flex', justifyContent:'center'}}>
+              <CoverPlaceholder album={album} size={400}/>
+            </div>
+
+            <div className="detail-info">
+              <div className="detail-title">{album.title}</div>
+              <div className="detail-artist">{album.artist}</div>
+              <button className="detail-desc-toggle" onClick={openDesc}>
+                description
+              </button>
+            </div>
+          </div>
+
+          <div className="download-all-btn">
+            <button className="dl-circle" onClick={handleDownloadAll} title="Download all">
+              <svg viewBox="0 0 24 24"><path d="M12 3v13M7 11l5 5 5-5M4 20h16"/></svg>
+            </button>
+          </div>
+
+          <div className="tracklist">
+            {album.tracks.map(track => {
+              const isThisPlaying = currentTrack?.id === track.id && currentTrack?.albumId === album.id && isPlaying;
+              const isThisLoaded = currentTrack?.id === track.id && currentTrack?.albumId === album.id;
+              return (
+                <div key={track.id} className={`track-row ${isThisLoaded ? 'playing' : ''}`} onClick={() => onPlay(track, album)}>
+                  <div className="track-num">
+                    {isThisPlaying ? <EQ/> : track.id}
+                  </div>
+                  <div className="track-info">
+                    <div className="track-title">{track.title}</div>
+                    <div className="track-sub">{track.artist}</div>
+                  </div>
+                  <div style={{fontFamily:'monospace',fontSize:10,color:'#444',marginRight:8}}>{track.duration}</div>
+                  <div className="track-dl-col" style={{width:44,alignItems:'center'}}>
+                    <button className="track-dl" onClick={e => { e.stopPropagation(); handleDownloadTrack(track); }}>
+                      <svg viewBox="0 0 24 24"><path d="M12 3v13M7 11l5 5 5-5M4 20h16"/></svg>
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="detail-meta">
+            {album.totalTracks} Songs, {album.duration} · © CARGO 2026. All rights reserved.
+          </div>
+
+          {descOpen && ReactDOM.createPortal(
+            <div
+              className={`desc-modal-overlay${descClosing ? ' closing' : ''}`}
+              onClick={closeDesc}
+            >
+              <div
+                className="desc-modal"
+                onClick={e => e.stopPropagation()}
+                style={{'--tx': descOrigin.tx, '--ty': descOrigin.ty}}
+              >
+                <button
+                  className="desc-modal-close"
+                  onClick={closeDesc}
+                  aria-label="Close description"
+                >
+                  <svg viewBox="0 0 24 24"><path d="M5 5l14 14M19 5L5 19"/></svg>
+                </button>
+                <div className="desc-modal-text">{album.description}</div>
+              </div>
+            </div>,
+            document.body
+          )}
+        </div>
+      );
+    };
+
+    // ─── BOTTOM PLAYER ──────────────────────────────────────────────────
+    const BottomPlayer = ({ track, album, isPlaying, onToggle, onPrev, onNext, progress, onSeek }) => {
+      if (!track) return null;
+      return (
+        <div className="player-bar">
+          <div className="player-inner">
+            <div className="player-progress" onClick={onSeek}>
+              <div className="player-progress-fill" style={{width: `${progress * 100}%`}}/>
+            </div>
+            <div className="player-controls">
+              <CoverPlaceholder album={album} size={36}/>
+              <div className="player-track-info">
+                <div className="player-track-title">{track.title}</div>
+                <div className="player-track-artist">{track.artist}</div>
+              </div>
+              <div className="player-btns">
+                <button className="player-btn" onClick={onPrev}><PrevIcon/></button>
+                <button className="player-btn play-pause" onClick={onToggle}>
+                  {isPlaying ? <PauseIcon/> : <PlayIcon/>}
+                </button>
+                <button className="player-btn" onClick={onNext}><NextIcon/></button>
+              </div>
+              <div className="player-time">{track.duration}</div>
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    // ─── CARGO PAGE ─────────────────────────────────────────────────────
+    const CargoPage = () => (
+      <div className="cargo-page page-enter">
+        <div className="cargo-section-label">THE LABEL</div>
+        <div className="section-divider"/>
+        <img
+          src="uploads/cargologo_clean.svg"
+          alt="CARGO"
+          style={{
+            width: '100%',
+            maxWidth: 520,
+            display: 'block',
+            marginBottom: 40,
+            filter: `brightness(0) saturate(100%) invert(35%) sepia(80%) saturate(800%) hue-rotate(345deg)`,
+          }}
+        />
+        <div className="cargo-text">
+          CARGO is an independent music label founded by Typhex Webster.<br/><br/>
+          We exist outside the mainstream — built for artists who move between worlds, genres, and aesthetics without asking permission.<br/><br/>
+          CARGO releases music, clothing, and visual projects under one roof. Everything is made with intention. Nothing is rushed.
+        </div>
+        <div className="cargo-visuals">
+          {['visual 01', 'visual 02', 'visual 03', 'visual 04'].map(v => (
+            <div key={v} className="cargo-visual-item" style={{
+              background: `linear-gradient(135deg, #0d0d0d, #1a1a1a)`,
+              backgroundImage: `repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(200,64,42,0.03) 3px, rgba(200,64,42,0.03) 6px)`
+            }}>
+              <span>[ {v} ]<br/>drop photo here</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+
+    // ─── STORE PAGE ─────────────────────────────────────────────────────
+    const StorePage = () => (
+      <div className="store-page page-enter">
+        <div className="store-soon">
+          <div className="cargo-section-label">CARGO STORE</div>
+          <div className="section-divider" style={{margin:'12px auto 24px'}}/>
+          <h1>STORE</h1>
+          <p>SOON</p>
+        </div>
+        <div className="store-grid">
+          {['TEE 001', 'TEE 002', 'HOODIE 001', 'CAP 001'].map(item => (
+            <div key={item} className="store-item">
+              <span>[ clothing photo ]</span>
+              <span className="soon-tag">SOON</span>
+              <span style={{color:'#333',fontSize:10,letterSpacing:'0.2em'}}>{item}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+
+    // ─── CONTACT PAGE ───────────────────────────────────────────────────
+    const ContactPage = () => {
+      const [sent, setSent] = useState(false);
+      const [form, setForm] = useState({ name: '', email: '', message: '' });
+
+      const handleSubmit = (e) => {
+        e.preventDefault();
+        setSent(true);
+      };
+
+      if (sent) return (
+        <div className="contact-page page-enter" style={{display:'flex',flexDirection:'column',justifyContent:'center',minHeight:'calc(100dvh - 72px)'}}>
+          <div className="cargo-section-label">MESSAGE SENT</div>
+          <div className="section-divider"/>
+          <h1>THANKS.</h1>
+          <p style={{fontFamily:'monospace',fontSize:12,color:'#666',letterSpacing:'0.1em',lineHeight:1.8}}>
+            Your message has been received.<br/>
+            We'll get back to you shortly.
+          </p>
+        </div>
+      );
+
+      return (
+        <div className="contact-page page-enter">
+          <div className="cargo-section-label">GET IN TOUCH</div>
+          <div className="section-divider"/>
+          <h1>CONTACT</h1>
+          <form className="contact-form" onSubmit={handleSubmit}>
+            <div className="form-group">
+              <label>Name</label>
+              <input type="text" required value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="your name"/>
+            </div>
+            <div className="form-group">
+              <label>E-Mail</label>
+              <input type="email" required value={form.email} onChange={e=>setForm(f=>({...f,email:e.target.value}))} placeholder="your@email.com"/>
+            </div>
+            <div className="form-group">
+              <label>Message</label>
+              <textarea required value={form.message} onChange={e=>setForm(f=>({...f,message:e.target.value}))} placeholder="write your message..."/>
+            </div>
+            <button type="submit" className="submit-btn">SEND →</button>
+          </form>
+        </div>
+      );
+    };
+
+    // ─── APP ────────────────────────────────────────────────────────────
+    const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+      "accentColor": "#ec5600",
+      "bgColor": "#000000",
+      "fontScale": 1,
+      "scanlines": true,
+      "glowEffect": true,
+      "navFontSize": 38,
+      "navBoxWidth": 240,
+      "navBoxPadding": 16,
+      "navGap": 16,
+      "navVerticalOffset": -16,
+      "navScale": 0.55,
+      "albumTitleSize": 28,
+      "albumTitleOffset": -4,
+      "albumTitleMarginBottom": 0,
+      "albumTitleLetterSpacing": 0.16,
+      "carouselSideVisibility": 0.95,
+      "landingLabel": "",
+      "landingTitle": "",
+      "landingSubtitle": "",
+      "landingBtn": "ENTER"
+    }/*EDITMODE-END*/;
+
+    const App = () => {
+      const [screen, setScreen] = useState('landing');
+      const [prevScreen, setPrevScreen] = useState('landing');
+      const [navOpen, setNavOpen] = useState(false);
+      const [bagOpen, setBagOpen] = useState(false);
+      const [selectedAlbum, setSelectedAlbum] = useState(null);
+      const [currentTrack, setCurrentTrack] = useState(null);
+      const [currentAlbum, setCurrentAlbum] = useState(null);
+      const [isPlaying, setIsPlaying] = useState(false);
+      const [progress, setProgress] = useState(0);
+
+      // Tweaks
+      const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
+
+      // Apply tweaks to CSS vars
+      useEffect(() => {
+        document.documentElement.style.setProperty('--red', tweaks.accentColor);
+        document.documentElement.style.setProperty('--black', tweaks.bgColor);
+        document.documentElement.style.fontSize = `${tweaks.fontScale * 100}%`;
+      }, [tweaks.accentColor, tweaks.bgColor, tweaks.fontScale]);
+
+      // Persist screen
+      useEffect(() => {
+        try {
+          const saved = localStorage.getItem('cargo_screen');
+          const valid = ['hub','music','cargo','store','contact'];
+          if (saved && valid.includes(saved)) setScreen(saved);
+        } catch(e) {
+          localStorage.removeItem('cargo_screen');
+        }
+      }, []);
+      useEffect(() => {
+        if (screen !== 'landing') localStorage.setItem('cargo_screen', screen);
+      }, [screen]);
+
+      // Fake progress timer
+      useEffect(() => {
+        if (!isPlaying) return;
+        const interval = setInterval(() => {
+          setProgress(p => {
+            if (p >= 1) { setIsPlaying(false); return 0; }
+            return p + (1 / 240);
+          });
+        }, 500);
+        return () => clearInterval(interval);
+      }, [isPlaying]);
+
+      const navigate = (page) => {
+        setPrevScreen(screen);
+        setScreen(page);
+        setSelectedAlbum(null);
+        if (page === 'landing') localStorage.removeItem('cargo_screen');
+      };
+
+      const handlePlay = (track, album) => {
+        if (currentTrack?.id === track.id && currentAlbum?.id === album.id) {
+          setIsPlaying(p => !p);
+        } else {
+          setCurrentTrack({...track, albumId: album.id});
+          setCurrentAlbum(album);
+          setIsPlaying(true);
+          setProgress(0);
+        }
+      };
+
+      const handlePrev = () => {
+        if (!currentAlbum || !currentTrack) return;
+        const idx = currentAlbum.tracks.findIndex(t => t.id === currentTrack.id);
+        const prev = currentAlbum.tracks[(idx - 1 + currentAlbum.tracks.length) % currentAlbum.tracks.length];
+        setCurrentTrack({...prev, albumId: currentAlbum.id});
+        setProgress(0); setIsPlaying(true);
+      };
+
+      const handleNext = () => {
+        if (!currentAlbum || !currentTrack) return;
+        const idx = currentAlbum.tracks.findIndex(t => t.id === currentTrack.id);
+        const next = currentAlbum.tracks[(idx + 1) % currentAlbum.tracks.length];
+        setCurrentTrack({...next, albumId: currentAlbum.id});
+        setProgress(0); setIsPlaying(true);
+      };
+
+      const handleSeek = (e) => {
+        const rect = e.currentTarget.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        setProgress(Math.max(0, Math.min(1, x / rect.width)));
+      };
+
+      const showHeader = screen !== 'landing';
+      const showPlayer = currentTrack !== null;
+      const hamburgerOpen = screen === 'hub';
+
+      const handleMenuOpen = () => {
+        if (screen === 'hub') {
+          // X pressed — go back to previous page
+          const back = (prevScreen === 'hub' || prevScreen === 'landing') ? 'landing' : prevScreen;
+          navigate(back);
+        } else {
+          navigate('hub');
+        }
+      };
+
+      return (
+        <>
+          {screen === 'landing' && (
+            <LandingPage onEnter={() => setScreen('hub')} scanlines={tweaks.scanlines} glow={tweaks.glowEffect} tweaks={tweaks}/>
+          )}
+
+          {showHeader && (
+            <Header onMenuOpen={handleMenuOpen} onNavigate={navigate} onBagOpen={() => setBagOpen(true)} navOpen={hamburgerOpen}/>
+          )}
+
+          {screen === 'hub' && (
+            <div className="main-page">
+              <HubPage onNavigate={navigate} tweaks={tweaks}/>
+            </div>
+          )}
+
+          {screen === 'music' && (
+            <div className="main-page page">
+              {!selectedAlbum
+                ? <MusicGallery onSelectAlbum={a => setSelectedAlbum(a)} tweaks={tweaks}/>
+                : <AlbumDetail
+                    album={selectedAlbum}
+                    onBack={() => setSelectedAlbum(null)}
+                    onPlay={handlePlay}
+                    currentTrack={currentTrack}
+                    isPlaying={isPlaying}
+                  />
+              }
+            </div>
+          )}
+
+          {screen === 'cargo' && <div className="main-page page"><CargoPage/></div>}
+          {screen === 'store' && <div className="main-page page"><StorePage/></div>}
+          {screen === 'contact' && <div className="main-page page"><ContactPage/></div>}
+
+          <MediaPanel open={bagOpen} onClose={() => setBagOpen(false)}/>
+
+          {showPlayer && (
+            <BottomPlayer
+              track={currentTrack}
+              album={currentAlbum}
+              isPlaying={isPlaying}
+              onToggle={() => setIsPlaying(p => !p)}
+              onPrev={handlePrev}
+              onNext={handleNext}
+              progress={progress}
+              onSeek={handleSeek}
+            />
+          )}
+
+          <TweaksPanel>
+            <TweakSection label="Colours">
+              <TweakColor id="accentColor" label="Accent" value={tweaks.accentColor} onChange={v => setTweak('accentColor', v)}/>
+              <TweakColor id="bgColor" label="Background" value={tweaks.bgColor} onChange={v => setTweak('bgColor', v)}/>
+            </TweakSection>
+            <TweakSection label="Typography">
+              <TweakSlider id="fontScale" label="Font Scale" value={tweaks.fontScale} min={0.8} max={1.3} step={0.05} onChange={v => setTweak('fontScale', v)}/>
+            </TweakSection>
+            <TweakSection label="Nav Buttons">
+              <TweakSlider id="navFontSize" label="Font Size" value={tweaks.navFontSize} min={14} max={52} step={1} onChange={v => setTweak('navFontSize', v)}/>
+              <TweakSlider id="navBoxWidth" label="Box Width" value={tweaks.navBoxWidth} min={160} max={600} step={4} onChange={v => setTweak('navBoxWidth', v)}/>
+              <TweakSlider id="navBoxPadding" label="Box Height" value={tweaks.navBoxPadding} min={8} max={48} step={1} onChange={v => setTweak('navBoxPadding', v)}/>
+              <TweakSlider id="navScale" label="Scale (all)" value={tweaks.navScale} min={0.3} max={2} step={0.05} onChange={v => setTweak('navScale', v)}/>
+              <TweakSlider id="navGap" label="Spacing" value={tweaks.navGap} min={8} max={80} step={2} onChange={v => setTweak('navGap', v)}/>
+              <TweakSlider id="navVerticalOffset" label="Vertical Position" value={tweaks.navVerticalOffset} min={-300} max={300} step={4} onChange={v => setTweak('navVerticalOffset', v)}/>
+            </TweakSection>
+            <TweakSection label="Album Title">
+              <TweakSlider id="carouselSideVisibility" label="Side Cover Visibility" value={tweaks.carouselSideVisibility} min={0.1} max={1.0} step={0.05} onChange={v => setTweak('carouselSideVisibility', v)}/>
+              <TweakSlider id="albumTitleSize" label="Font Size" value={tweaks.albumTitleSize} min={8} max={48} step={1} onChange={v => setTweak('albumTitleSize', v)}/>
+              <TweakSlider id="albumTitleOffset" label="Top Offset" value={tweaks.albumTitleOffset} min={-60} max={80} step={2} onChange={v => setTweak('albumTitleOffset', v)}/>
+              <TweakSlider id="albumTitleMarginBottom" label="Bottom Spacing" value={tweaks.albumTitleMarginBottom} min={0} max={60} step={2} onChange={v => setTweak('albumTitleMarginBottom', v)}/>
+              <TweakSlider id="albumTitleLetterSpacing" label="Letter Spacing" value={tweaks.albumTitleLetterSpacing} min={0} max={0.8} step={0.02} onChange={v => setTweak('albumTitleLetterSpacing', v)}/>
+            </TweakSection>
+            <TweakSection label="Landing Page">
+              <TweakText id="landingLabel" label="Label" value={tweaks.landingLabel} onChange={v => setTweak('landingLabel', v)}/>
+              <TweakText id="landingTitle" label="Title" value={tweaks.landingTitle} onChange={v => setTweak('landingTitle', v)}/>
+              <TweakText id="landingSubtitle" label="Subtitle" value={tweaks.landingSubtitle} onChange={v => setTweak('landingSubtitle', v)}/>
+              <TweakText id="landingBtn" label="Button" value={tweaks.landingBtn} onChange={v => setTweak('landingBtn', v)}/>
+            </TweakSection>
+            <TweakSection label="Effects">
+              <TweakToggle id="scanlines" label="Scanlines" value={tweaks.scanlines} onChange={v => setTweak('scanlines', v)}/>
+              <TweakToggle id="glowEffect" label="Landing Glow" value={tweaks.glowEffect} onChange={v => setTweak('glowEffect', v)}/>
+            </TweakSection>
+          </TweaksPanel>
+        </>
+      );
+    };
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+  </script>
+</body>
+</html>
