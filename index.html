@@ -463,24 +463,6 @@
       margin: 0 auto;
     }
 
-    @media (min-width: 768px) {
-      .album-detail {
-        max-width: 1400px;
-        padding: 40px 48px 160px;
-      }
-      /* keep the cover + title block centered at its mobile size */
-      .album-detail .detail-hero {
-        max-width: 480px;
-        margin: 0 auto;
-      }
-      /* tracklist + download-all stretch full width */
-      .album-detail .tracklist,
-      .album-detail .download-all-btn,
-      .album-detail .detail-meta {
-        max-width: none;
-      }
-    }
-
     .album-detail .back-btn {
       background: transparent;
       border: none;
@@ -556,128 +538,6 @@
       color: #888;
       margin-top: 10px;
       letter-spacing: 0.05em;
-    }
-
-    /* DESCRIPTION POPUP */
-    .desc-modal-overlay {
-      position: fixed;
-      inset: 0;
-      background: rgba(0, 0, 0, 0.78);
-      backdrop-filter: blur(4px);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 9999;
-      animation: descOverlayIn 0.28s ease-out;
-      padding: 24px;
-      overflow: hidden;
-    }
-
-    @keyframes descOverlayIn {
-      from { opacity: 0; }
-      to { opacity: 1; }
-    }
-
-    .desc-modal {
-      position: relative;
-      background: #0a0a0a;
-      border: none;
-      width: 100%;
-      max-width: 640px;
-      max-height: 80vh;
-      padding: 64px 48px 48px;
-      animation: descModalZoom 0.42s cubic-bezier(0.22, 1, 0.36, 1);
-      overflow-y: auto;
-      --tx: 0px;
-      --ty: 0px;
-    }
-
-    @keyframes descModalZoom {
-      from {
-        transform: translate(var(--tx), var(--ty)) scale(0.02);
-        opacity: 0;
-      }
-      to {
-        transform: translate(0, 0) scale(1);
-        opacity: 1;
-      }
-    }
-
-    .desc-modal-overlay.closing {
-      animation: descOverlayOut 0.32s ease-in forwards;
-    }
-
-    .desc-modal-overlay.closing .desc-modal {
-      animation: descModalZoomOut 0.32s cubic-bezier(0.64, 0, 0.78, 0) forwards;
-    }
-
-    @keyframes descOverlayOut {
-      from { opacity: 1; }
-      to { opacity: 0; }
-    }
-
-    @keyframes descModalZoomOut {
-      from {
-        transform: translate(0, 0) scale(1);
-        opacity: 1;
-      }
-      to {
-        transform: translate(var(--tx), var(--ty)) scale(0.02);
-        opacity: 0;
-      }
-    }
-
-    .desc-modal-close {
-      position: absolute;
-      top: 16px;
-      right: 16px;
-      width: 36px;
-      height: 36px;
-      background: transparent;
-      border: none;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 0;
-    }
-
-    .desc-modal-close svg {
-      width: 20px;
-      height: 20px;
-      stroke: var(--red);
-      stroke-width: 1.5;
-      fill: none;
-    }
-
-    .desc-modal-close:hover svg {
-      stroke-width: 2;
-    }
-
-    .desc-modal-title {
-      font-family: var(--mono);
-      font-size: 11px;
-      letter-spacing: 0.4em;
-      color: var(--red);
-      text-transform: uppercase;
-      text-align: center;
-      margin-bottom: 24px;
-    }
-
-    .desc-modal-text {
-      font-family: var(--mono);
-      font-size: 13px;
-      line-height: 1.85;
-      color: var(--red);
-      letter-spacing: 0.05em;
-      text-align: left;
-    }
-
-    @media (min-width: 768px) {
-      .desc-modal {
-        padding: 80px 72px 64px;
-      }
-      .desc-modal-text { font-size: 14px; }
     }
 
     .download-all-btn {
@@ -1539,7 +1399,7 @@
 
     // Right-side icon: two overlapping rounded rectangles (CARGO brand mark)
     const CargoMarkIcon = () => (
-      <svg viewBox="0 0 56 42" fill="none" xmlns="http://www.w3.org/2000/svg" style={{width:48,height:36,transform:'scaleX(-1)'}}>
+      <svg viewBox="0 0 56 42" fill="none" xmlns="http://www.w3.org/2000/svg" style={{width:48,height:36}}>
         <rect x="2" y="2" width="36" height="24" rx="6" stroke="var(--red)" strokeWidth="1.8" fill="none"/>
         <rect x="18" y="16" width="36" height="24" rx="6" stroke="var(--red)" strokeWidth="1.8" fill="none"/>
       </svg>
@@ -1957,8 +1817,8 @@
         return () => window.removeEventListener('resize', onResize);
       }, []);
 
-      // card size
-      const CARD = 420;
+      // card size (responsive: smaller on mobile)
+      const CARD = vw < 600 ? Math.min(280, vw - 100) : 420;
       const sideScale = 0.65;
       const GAP = Math.max(0, Math.round(vw / 2 - CARD / 2 - CARD * sideScale * tweaks.carouselSideVisibility));
       const SIDE_VISIBLE = 80;
@@ -2074,31 +1934,13 @@
     // ─── ALBUM DETAIL ───────────────────────────────────────────────────
     const AlbumDetail = ({ album, onBack, onPlay, currentTrack, isPlaying }) => {
       const [descOpen, setDescOpen] = useState(false);
-      const [descClosing, setDescClosing] = useState(false);
-      const [descOrigin, setDescOrigin] = useState({ tx: '0px', ty: '0px' });
-
-      const openDesc = (e) => {
-        const rect = e.currentTarget.getBoundingClientRect();
-        const cx = rect.left + rect.width / 2;
-        const cy = rect.top + rect.height / 2;
-        const vx = window.innerWidth / 2;
-        const vy = window.innerHeight / 2;
-        setDescOrigin({
-          tx: `${cx - vx}px`,
-          ty: `${cy - vy}px`,
-        });
-        setDescClosing(false);
-        setDescOpen(true);
-      };
-
-      const closeDesc = () => {
-        if (descClosing) return;
-        setDescClosing(true);
-        setTimeout(() => {
-          setDescOpen(false);
-          setDescClosing(false);
-        }, 320);
-      };
+      const [vw, setVw] = useState(typeof window !== 'undefined' ? window.innerWidth : 800);
+      useEffect(() => {
+        const onResize = () => setVw(window.innerWidth);
+        window.addEventListener('resize', onResize);
+        return () => window.removeEventListener('resize', onResize);
+      }, []);
+      const detailCoverSize = vw < 600 ? Math.min(300, vw - 60) : 400;
 
       const handleDownloadAll = () => {
         alert('Download all: Dateien werden bereitgestellt sobald MP3s hochgeladen sind.');
@@ -2121,18 +1963,19 @@
             ← BACK
           </button>
 
-          <div className="detail-hero">
-            <div style={{display:'flex', justifyContent:'center'}}>
-              <CoverPlaceholder album={album} size={400}/>
-            </div>
+          <div style={{display:'flex', justifyContent:'center'}}>
+            <CoverPlaceholder album={album} size={detailCoverSize}/>
+          </div>
 
-            <div className="detail-info">
-              <div className="detail-title">{album.title}</div>
-              <div className="detail-artist">{album.artist}</div>
-              <button className="detail-desc-toggle" onClick={openDesc}>
-                description
-              </button>
-            </div>
+          <div className="detail-info">
+            <div className="detail-title">{album.title}</div>
+            <div className="detail-artist">{album.artist}</div>
+            <button className="detail-desc-toggle" onClick={() => setDescOpen(o => !o)}>
+              {descOpen ? 'hide description' : 'description'}
+            </button>
+            {descOpen && (
+              <div className="detail-desc-text">{album.description}</div>
+            )}
           </div>
 
           <div className="download-all-btn">
@@ -2168,29 +2011,6 @@
           <div className="detail-meta">
             {album.totalTracks} Songs, {album.duration} · © CARGO 2026. All rights reserved.
           </div>
-
-          {descOpen && ReactDOM.createPortal(
-            <div
-              className={`desc-modal-overlay${descClosing ? ' closing' : ''}`}
-              onClick={closeDesc}
-            >
-              <div
-                className="desc-modal"
-                onClick={e => e.stopPropagation()}
-                style={{'--tx': descOrigin.tx, '--ty': descOrigin.ty}}
-              >
-                <button
-                  className="desc-modal-close"
-                  onClick={closeDesc}
-                  aria-label="Close description"
-                >
-                  <svg viewBox="0 0 24 24"><path d="M5 5l14 14M19 5L5 19"/></svg>
-                </button>
-                <div className="desc-modal-text">{album.description}</div>
-              </div>
-            </div>,
-            document.body
-          )}
         </div>
       );
     };
