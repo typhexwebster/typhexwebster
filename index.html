@@ -42,6 +42,27 @@
     ::-webkit-scrollbar-track { background: #000; }
     ::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
 
+    /* ── Cover-art protection ──────────────────────────────────────────
+       Album covers stay interactive inside the library (tap, swipe), but
+       cannot be dragged out, saved or copied via the browser UI.
+       -webkit-user-drag covers Chrome/Safari/Edge; the global dragstart
+       listener (see script) covers Firefox, which ignores user-drag. */
+    .protected-cover,
+    .detail-cover,
+    .lightbox-img {
+      -webkit-user-drag: none;
+      -khtml-user-drag: none;
+      -moz-user-drag: none;
+      -o-user-drag: none;
+      user-drag: none;
+      -webkit-user-select: none;
+      -moz-user-select: none;
+      -ms-user-select: none;
+      user-select: none;
+      -webkit-touch-callout: none;
+      pointer-events: auto;
+    }
+
     /* Page transitions */
     .page {
       position: absolute;
@@ -1647,7 +1668,7 @@ const { useState, useEffect, useRef, useCallback } = React;
 const ALBUMS = [
 {
   id: 'psy-atlas',
-  title: 'PSY-ATLAS',
+  title: 'PSY-ATLAS - EP',
   artist: 'Typhex Webster',
   label: 'CARGO',
   year: '2024',
@@ -1710,6 +1731,30 @@ const ALBUMS = [
   { id: 5, title: 'FIZZY', artist: 'Typhex Webster & keinzeitstudent', duration: '3:55', file: null },
   { id: 6, title: 'MARATHON', artist: 'Typhex Webster', duration: '4:30', file: null },
   { id: 7, title: 'SANDSTORM', artist: 'Typhex Webster & keinzeitstudent', duration: '3:18', file: null }]
+
+},
+{
+  id: 'softwhere',
+  title: 'SOFTWHERE!?',
+  artist: 'Typhex Webster',
+  label: 'CARGO',
+  year: '2026',
+  availability: 'apple music & spotify',
+  availabilityLinks: { apple: '#', spotify: '#' },
+  description: 'SOFTWHERE!? is a glitched-out beat tape built from cardboard textures and corner-store nostalgia. Crunchy, off-grid and unapologetically lo-fi — Typhex Webster digs through the static for something real.',
+  totalTracks: 9,
+  duration: '31 Min',
+  coverColor: '#2A6B5A',
+  tracks: [
+  { id: 1, title: 'SUPERCRISPY', artist: 'Typhex Webster', duration: '3:12', file: null },
+  { id: 2, title: 'CARDBOARD CHURCH', artist: 'Typhex Webster', duration: '4:05', file: null },
+  { id: 3, title: '42 UNITÉS', artist: 'Typhex Webster', duration: '2:58', file: null },
+  { id: 4, title: 'SOUR CREAM DREAM', artist: 'Typhex Webster', duration: '3:47', file: null },
+  { id: 5, title: 'PAPRIKA CHILI', artist: 'Typhex Webster', duration: '3:30', file: null },
+  { id: 6, title: 'NIGHT SHIFT AISLE', artist: 'Typhex Webster', duration: '4:18', file: null },
+  { id: 7, title: 'PLASTIC SAINTS', artist: 'Typhex Webster', duration: '3:22', file: null },
+  { id: 8, title: 'STATIC SNACK', artist: 'Typhex Webster', duration: '2:44', file: null },
+  { id: 9, title: 'SOFTWHERE', artist: 'Typhex Webster', duration: '3:04', file: null }]
 
 }];
 
@@ -1807,9 +1852,10 @@ const EQ = () =>
 
 // ─── COVER PLACEHOLDER ──────────────────────────────────────────────
 const COVER_IMAGES = {
-  'camels-n-zebras': "uploads/camels'nzebras.png",
-  'twin-sun-static': "uploads/twin sund static.png",
-  'psy-atlas': "uploads/psy_atlas.png"
+  'camels-n-zebras': "uploads/cover-camels-n-zebras.png",
+  'twin-sun-static': "uploads/cover-twin-sun-static.png",
+  'psy-atlas': "uploads/cover-psy-atlas-ep.png",
+  'softwhere': "uploads/cover-softwhere.jpg"
 };
 
 const CoverPlaceholder = ({ album, size = 280 }) => {
@@ -1819,6 +1865,10 @@ const CoverPlaceholder = ({ album, size = 280 }) => {
       <img
         src={imgSrc}
         alt={album.title}
+        className="protected-cover"
+        draggable={false}
+        onDragStart={(e) => e.preventDefault()}
+        onContextMenu={(e) => e.preventDefault()}
         style={{
           width: size, maxWidth: '100%',
           aspectRatio: '1 / 1', height: 'auto',
@@ -2843,6 +2893,26 @@ const App = () => {
         </>);
 
 };
+
+// ── Global cover-art drag/copy guard ─────────────────────────────────
+// Belt-and-suspenders to the CSS user-drag rule: catches Firefox (which
+// ignores -webkit-user-drag) and any image-bearing element, on every
+// device/browser, so covers can never be dragged out or pulled to the
+// desktop / another app. Library swipe + tap gestures are unaffected.
+const __isCover = (el) =>
+  el && el.tagName === 'IMG' &&
+  (el.classList.contains('protected-cover') ||
+   el.classList.contains('detail-cover') ||
+   el.classList.contains('lightbox-img'));
+
+document.addEventListener('dragstart', (e) => {
+  if (__isCover(e.target)) e.preventDefault();
+}, true);
+
+// Block the native long-press / right-click "save / copy image" path on covers.
+document.addEventListener('contextmenu', (e) => {
+  if (__isCover(e.target)) e.preventDefault();
+}, true);
 
 ReactDOM.createRoot(document.getElementById('root')).render(<App />);
 </script>
