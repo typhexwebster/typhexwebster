@@ -2168,8 +2168,15 @@ const MusicGallery = ({ active, onActiveChange, onSelectAlbum, tweaks }) => {
   // simply grows, leaving the desktop layout untouched.
   const MAX_CARD = 420;
   const sideScale = 0.65;
-  const sideVis = tweaks.carouselSideVisibility;
   const GAP_MIN = 6;
+  // On phones the active cover should grow and the neighbours crop in more,
+  // so we ease the effective side visibility down as the viewport narrows.
+  // At desktop widths it stays the user's tweak value (layout unchanged);
+  // on phones it drops toward MOBILE_SIDE_VIS for a bigger hero cover.
+  const MOBILE_SIDE_VIS = 0.4;
+  const sideVisBase = tweaks.carouselSideVisibility;
+  const t = Math.max(0, Math.min(1, (vw - 480) / (900 - 480)));
+  const sideVis = MOBILE_SIDE_VIS + (sideVisBase - MOBILE_SIDE_VIS) * t;
   const CARD = Math.round(
     Math.min(MAX_CARD, (vw / 2 - GAP_MIN) / (0.5 + sideScale * sideVis))
   );
@@ -2177,6 +2184,10 @@ const MusicGallery = ({ active, onActiveChange, onSelectAlbum, tweaks }) => {
     GAP_MIN,
     Math.round(vw / 2 - CARD / 2 - CARD * sideScale * sideVis)
   );
+  // Album title shrinks on small screens (carousel only).
+  const titleSize = vw < 600
+    ? Math.max(13, Math.round(tweaks.albumTitleSize * 0.6))
+    : tweaks.albumTitleSize;
 
   const getPos = (i) => {
     const diff = (i - active + ALBUMS.length) % ALBUMS.length;
@@ -2263,7 +2274,7 @@ const MusicGallery = ({ active, onActiveChange, onSelectAlbum, tweaks }) => {
                     <div style={{
                   textAlign: 'center',
                   fontFamily: 'var(--mono)',
-                  fontSize: tweaks.albumTitleSize,
+                  fontSize: titleSize,
                   letterSpacing: tweaks.albumTitleLetterSpacing + 'em',
                   color: 'var(--white)',
                   textTransform: 'uppercase',
