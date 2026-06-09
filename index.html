@@ -50,6 +50,13 @@
       overflow-x: hidden;
     }
 
+    /* Music library: locked to the viewport, no vertical scrolling. */
+    .page.page-locked {
+      overflow: hidden;
+      overscroll-behavior: none;
+      touch-action: pan-x;
+    }
+
     /* LANDING */
     .landing {
       display: flex;
@@ -348,11 +355,13 @@
 
     /* MUSIC GALLERY */
     .music-gallery {
-      padding: 40px 0 120px;
+      padding: 0;
+      height: calc(100dvh - 100px);
       display: flex;
       flex-direction: column;
       justify-content: center;
-      min-height: calc(100dvh - 100px);
+      align-items: center;
+      overflow: hidden;
     }
 
     .gallery-header {
@@ -1134,6 +1143,16 @@
     /* Page transition animations */
     .page-enter {
       animation: pageIn 0.5s ease forwards;
+    }
+
+    /* Opacity-only entrance for the locked music gallery — no translate, so
+       it can never offset the layout and clip content. */
+    .gallery-fade {
+      animation: galleryFade 0.5s ease forwards;
+    }
+    @keyframes galleryFade {
+      from { opacity: 0; }
+      to { opacity: 1; }
     }
 
     @keyframes pageIn {
@@ -2144,19 +2163,25 @@ const HubPage = ({ onNavigate, tweaks }) => {
 // ─── MUSIC GALLERY ──────────────────────────────────────────────────
 const MusicGallery = ({ active, onActiveChange, onSelectAlbum, tweaks }) => {
   const [vw, setVw] = useState(() => typeof window !== 'undefined' ? window.innerWidth : 800);
+  const [vh, setVh] = useState(() => typeof window !== 'undefined' ? window.innerHeight : 600);
   const [ready, setReady] = useState(false);
   const wrapRef = useRef(null);
   const touchRef = useRef({ x: 0, y: 0, active: false, swiped: false, horizontal: false });
   const album = ALBUMS[active];
 
   useEffect(() => {
-    setVw(window.innerWidth);
+    const measure = () => { setVw(window.innerWidth); setVh(window.innerHeight); };
+    measure();
     // enable the horizontal slide transition only AFTER mount, so the
     // carousel doesn't slide left/right when returning from a tracklist.
     const raf = requestAnimationFrame(() => setReady(true));
-    const onResize = () => setVw(window.innerWidth);
-    window.addEventListener('resize', onResize);
-    return () => {window.removeEventListener('resize', onResize);cancelAnimationFrame(raf);};
+    window.addEventListener('resize', measure);
+    window.addEventListener('orientationchange', measure);
+    return () => {
+      window.removeEventListener('resize', measure);
+      window.removeEventListener('orientationchange', measure);
+      cancelAnimationFrame(raf);
+    };
   }, []);
 
   // ── responsive cover sizing ───────────────────────────────────────
@@ -2177,17 +2202,32 @@ const MusicGallery = ({ active, onActiveChange, onSelectAlbum, tweaks }) => {
   const sideVisBase = tweaks.carouselSideVisibility;
   const t = Math.max(0, Math.min(1, (vw - 480) / (900 - 480)));
   const sideVis = MOBILE_SIDE_VIS + (sideVisBase - MOBILE_SIDE_VIS) * t;
+
+  // Album title shrinks on small screens (carousel only).
+  const titleSize = vw < 600
+    ? Math.max(13, Math.round(tweaks.albumTitleSize * 0.6))
+    : tweaks.albumTitleSize;
+
+  // ── fit-to-viewport sizing ─────────────────────────────────────────
+  // The cover is limited by BOTH the available width AND the available
+  // height, so the whole gallery (cover + title + availability + dots)
+  // always fits on screen — no clipping, no vertical scroll — and stays
+  // centred at any window size. Whichever axis is tighter wins.
+  const HEADER_H = 100;
+  const PAD_V = 24;                              // carousel top+bottom breathing room
+  const TITLE_BLOCK = 18 + Math.round(titleSize * 1.5); // title gap + line
+  const BELOW_BLOCK = 86;                        // availability + dots + margins
+  const SAFETY = 16;
+  const reservedV = HEADER_H + PAD_V + TITLE_BLOCK + BELOW_BLOCK + SAFETY;
+  const heightLimit = vh - reservedV;
+  const widthLimit = (vw / 2 - GAP_MIN) / (0.5 + sideScale * sideVis);
   const CARD = Math.round(
-    Math.min(MAX_CARD, (vw / 2 - GAP_MIN) / (0.5 + sideScale * sideVis))
+    Math.max(120, Math.min(MAX_CARD, widthLimit, heightLimit))
   );
   const GAP = Math.max(
     GAP_MIN,
     Math.round(vw / 2 - CARD / 2 - CARD * sideScale * sideVis)
   );
-  // Album title shrinks on small screens (carousel only).
-  const titleSize = vw < 600
-    ? Math.max(13, Math.round(tweaks.albumTitleSize * 0.6))
-    : tweaks.albumTitleSize;
 
   const getPos = (i) => {
     const diff = (i - active + ALBUMS.length) % ALBUMS.length;
@@ -2232,7 +2272,7 @@ const MusicGallery = ({ active, onActiveChange, onSelectAlbum, tweaks }) => {
   const baseTranslate = centreOffset - active * (CARD + GAP);
 
   return (
-    <div className="music-gallery page-enter">
+    <div className="music-gallery gallery-fade">
           <div
         className="album-carousel-wrap"
         ref={wrapRef}
@@ -2250,7 +2290,7 @@ const MusicGallery = ({ active, onActiveChange, onSelectAlbum, tweaks }) => {
             transform: `translateX(${baseTranslate}px)`,
             transition: ready ? 'transform 0.45s cubic-bezier(0.25,0.46,0.45,0.94)' : 'none',
             gap: GAP,
-            paddingTop: 20, paddingBottom: 40
+            paddingTop: 12, paddingBottom: 12
           }}>
           
               {ALBUMS.map((a, i) => {
@@ -2732,7 +2772,7 @@ const App = () => {
       }
 
           {screen === 'music' &&
-      <div className="main-page page">
+      <div className={`main-page ${selectedAlbum ? 'page' : 'page page-locked'}`}>
               {!selectedAlbum ?
         <MusicGallery active={musicActive} onActiveChange={setMusicActive} onSelectAlbum={(a) => setSelectedAlbum(a)} tweaks={tweaks} /> :
         <AlbumDetail
