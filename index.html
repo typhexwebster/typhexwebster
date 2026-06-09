@@ -376,7 +376,11 @@
       overflow: hidden;
       cursor: default;
       user-select: none;
-      touch-action: pan-y;
+      /* Library navigation is horizontal-only: allow horizontal panning,
+         lock vertical scroll / over-scroll so touch gestures never drag the
+         page up or down while swiping through covers. */
+      touch-action: pan-x;
+      overscroll-behavior: contain;
     }
 
     .album-carousel {
@@ -1797,7 +1801,8 @@ const CoverPlaceholder = ({ album, size = 280 }) => {
         src={imgSrc}
         alt={album.title}
         style={{
-          width: size, height: size,
+          width: size, maxWidth: '100%',
+          aspectRatio: '1 / 1', height: 'auto',
           objectFit: 'cover',
           display: 'block',
           flexShrink: 0
@@ -2154,11 +2159,24 @@ const MusicGallery = ({ active, onActiveChange, onSelectAlbum, tweaks }) => {
     return () => {window.removeEventListener('resize', onResize);cancelAnimationFrame(raf);};
   }, []);
 
-  // card size
-  const CARD = 420;
+  // ── responsive cover sizing ───────────────────────────────────────
+  // The active cover scales fluidly with the viewport width but never grows
+  // past MAX_CARD (the desktop size). CARD is chosen as the LARGEST size that
+  // still keeps a small positive gap, so the side covers always retain the
+  // SAME visible proportion as on desktop — no clamping to 0, no layout jumps
+  // between breakpoints. On wide screens CARD pins to MAX_CARD and the gap
+  // simply grows, leaving the desktop layout untouched.
+  const MAX_CARD = 420;
   const sideScale = 0.65;
-  const GAP = Math.max(0, Math.round(vw / 2 - CARD / 2 - CARD * sideScale * tweaks.carouselSideVisibility));
-  const SIDE_VISIBLE = 80;
+  const sideVis = tweaks.carouselSideVisibility;
+  const GAP_MIN = 6;
+  const CARD = Math.round(
+    Math.min(MAX_CARD, (vw / 2 - GAP_MIN) / (0.5 + sideScale * sideVis))
+  );
+  const GAP = Math.max(
+    GAP_MIN,
+    Math.round(vw / 2 - CARD / 2 - CARD * sideScale * sideVis)
+  );
 
   const getPos = (i) => {
     const diff = (i - active + ALBUMS.length) % ALBUMS.length;
