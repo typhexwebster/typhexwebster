@@ -31,6 +31,7 @@ function resolveAudio(path) {
 }
 
 export async function loadContent() {
+  if (!supabase) { console.warn('[cargo] Supabase nicht konfiguriert – überspringe Laden.'); return; }
   const [albumsRes, tracksRes, galleryRes, siteRes] = await Promise.all([
     supabase.from('albums').select('*').eq('published', true).order('sort_order', { ascending: true }),
     supabase.from('tracks').select('*').order('track_no', { ascending: true }),
