@@ -364,6 +364,16 @@ export default function Admin() {
   const [toastMsg, setToastMsg] = useState('');
   const toast = useCallback((m) => { setToastMsg(m); setTimeout(() => setToastMsg(''), 2600); }, []);
 
+  // Öffentliche Seite sperrt Scrollen (overflow:hidden) — im Admin wieder erlauben.
+  useEffect(() => {
+    document.documentElement.style.overflow = 'auto';
+    document.documentElement.style.height = 'auto';
+    document.body.style.overflow = 'auto';
+    document.body.style.height = 'auto';
+    const rootEl = document.getElementById('root');
+    if (rootEl) { rootEl.style.overflow = 'visible'; rootEl.style.height = 'auto'; }
+  }, []);
+
   const reload = useCallback(async () => {
     try { const d = await apiCall(pw, 'list'); setData(d); setAuthed(true); }
     catch (e) { if (e.message === 'unauthorized') { setAuthed(false); sessionStorage.removeItem('cargo_admin_pw'); } else toast('Fehler: ' + e.message); }
