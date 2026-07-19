@@ -34,6 +34,10 @@ export default async function handler(req, res) {
           accessKeyId: process.env.R2_ACCESS_KEY_ID,
           secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
         },
+        // R2 lehnt die von neueren aws-sdk-Versionen automatisch angehängte
+        // CRC32-Prüfsumme bei presigned PUT mit 400 ab -> abschalten.
+        requestChecksumCalculation: 'WHEN_REQUIRED',
+        responseChecksumValidation: 'WHEN_REQUIRED',
       });
       const key = `audio/${stamp}-${safeName(filename)}`;
       const cmd = new PutObjectCommand({ Bucket: bucket, Key: key, ContentType: contentType || 'audio/mp4' });
