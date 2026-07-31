@@ -5,6 +5,7 @@ import {
   TweakRadio, TweakSelect, TweakText, TweakNumber, TweakColor, TweakButton
 } from './tweaks-panel.jsx';
 import { ALBUMS, LIBRARY_IDS, COVER_IMAGES, GALLERY, SITE } from './content.js';
+import * as eqAnalyser from './eqAnalyser.js';
 
 
 
@@ -114,12 +115,63 @@ const InfoReceiptIcon = () =>
       </svg>;
 
 
-const EQ = () =>
-<div className="eq">
-        <div className="eq-bar" />
-        <div className="eq-bar" />
-        <div className="eq-bar" />
-      </div>;
+// 3-Band-Equalizer: Bass / Mitten / Höhen — reagiert live auf die Musik (FFT).
+const EQ_3_EDGES = [20, 250, 4000, 20000];
+const EQ_3_GAIN = [1.3, 1.7, 2.4];
+const EQ = () => {
+  const r0 = useRef(null), r1 = useRef(null), r2 = useRef(null);
+  useEffect(() => {
+    const refs = [r0, r1, r2];
+    let raf;
+    const tick = () => {
+      if (eqAnalyser.isReady()) {
+        const lv = eqAnalyser.levels(EQ_3_EDGES);
+        for (let i = 0; i < 3; i++) {
+          const b = refs[i].current;
+          if (b) { b.style.animation = 'none'; b.style.transform = `scaleY(${Math.max(0.15, Math.min(1, lv[i] * EQ_3_GAIN[i]))})`; }
+        }
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+  const barStyle = { height: '100%', transformOrigin: 'bottom' };
+  return (
+    <div className="eq">
+      <div className="eq-bar" ref={r0} style={barStyle} />
+      <div className="eq-bar" ref={r1} style={barStyle} />
+      <div className="eq-bar" ref={r2} style={barStyle} />
+    </div>
+  );
+};
+
+// 5-Band-Equalizer (Mini-Player): Bass / untere Mitten / Mitten / obere Mitten / Höhen.
+const EQ_5_EDGES = [20, 250, 1000, 2000, 6000, 20000];
+const EQ_5_GAIN = [1.2, 1.4, 1.7, 2.1, 2.7];
+const EQMini = ({ playing }) => {
+  const refs = [useRef(null), useRef(null), useRef(null), useRef(null), useRef(null)];
+  useEffect(() => {
+    let raf;
+    const tick = () => {
+      if (eqAnalyser.isReady()) {
+        const lv = eqAnalyser.levels(EQ_5_EDGES);
+        for (let i = 0; i < 5; i++) {
+          const b = refs[i].current;
+          if (b) { b.style.animation = 'none'; b.style.transform = `scaleY(${Math.max(0.14, Math.min(1, lv[i] * EQ_5_GAIN[i]))})`; }
+        }
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+  return (
+    <div className={`eq-mini ${playing ? '' : 'paused'}`} style={{ alignItems: 'flex-end' }}>
+      {refs.map((r, i) => <span key={i} ref={r} style={{ transformOrigin: 'bottom' }} />)}
+    </div>
+  );
+};
 
 
 // ─── COVER PLACEHOLDER ──────────────────────────────────────────────
@@ -921,9 +973,7 @@ const NowPlayingBar = ({ track, album, isPlaying, phase, minimized, tweaks, onTo
         role="button"
         aria-label="Expand player"
         title={`${track?.title} — ${track?.artist}`} style={{ height: "60px", borderWidth: "2px", width: "60px" }}>
-          <div className={`eq-mini ${isPlaying ? '' : 'paused'}`}>
-            <span /><span /><span /><span /><span />
-          </div>
+          <EQMini playing={isPlaying} />
         </div>
         <div className={`np-player ${phase === 'closing' ? 'np-closing' : minimized ? 'np-min' : 'np-open'}`} aria-hidden={minimized}>
           <div className="np-inner">
@@ -1149,6 +1199,9 @@ const App = () => {
   // only the seek/reset command; the bar reports track-end via onEnded.
   const handleEnded = useCallback(() => {setIsPlaying(false);}, []);
 
+  // Analyzer an das <audio>-Element hängen (setzt auch crossOrigin).
+  useEffect(() => { if (audioRef.current) eqAnalyser.attach(audioRef.current); }, []);
+
   // ── Echter Audio-Player ───────────────────────────────────────────
   // Lädt die R2-Datei des aktuellen Tracks und spielt/pausiert sie.
   useEffect(() => {
@@ -1210,6 +1263,7 @@ const App = () => {
   };
 
   const handlePlay = (track, album) => {
+    eqAnalyser.start(); // Analyzer nach Nutzer-Geste starten
     if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
     setPlayerPhase('open');
     if (currentTrack?.id === track.id && currentAlbum?.id === album.id) {
@@ -1370,6 +1424,7 @@ const App = () => {
           <audio
         ref={audioRef}
         preload="metadata"
+        crossOrigin="anonymous"
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={() => { const a = audioRef.current; if (a && isFinite(a.duration)) setAudioDur(a.duration); }}
         onEnded={handleNext}
