@@ -1173,7 +1173,18 @@ const App = () => {
 
   const handleTimeUpdate = () => {
     const a = audioRef.current;
-    if (a && a.duration) setProgress(a.currentTime / a.duration);
+    if (a && a.duration) {
+      setProgress(a.currentTime / a.duration);
+      if ('mediaSession' in navigator && navigator.mediaSession.setPositionState) {
+        try {
+          navigator.mediaSession.setPositionState({
+            duration: a.duration,
+            position: a.currentTime,
+            playbackRate: a.playbackRate || 1,
+          });
+        } catch (e) {}
+      }
+    }
   };
 
   const navigate = (page) => {
@@ -1232,6 +1243,39 @@ const App = () => {
     const a = audioRef.current;
     if (a && a.duration) a.currentTime = frac * a.duration;
   };
+
+  // ── Media Session: Cover/Titel/Artist auf Sperrbildschirm & OS-Player ──
+  useEffect(() => {
+    if (!('mediaSession' in navigator) || !currentTrack || !currentAlbum) return;
+    const cover = COVER_IMAGES[currentAlbum.id] || '';
+    const art = /^(https?:)?\/\//.test(cover) ? cover : (cover ? window.location.origin + cover : '');
+    try {
+      navigator.mediaSession.metadata = new window.MediaMetadata({
+        title: currentTrack.title || '',
+        artist: currentTrack.artist || currentAlbum.artist || '',
+        album: currentAlbum.title || '',
+        artwork: art ? [
+          { src: art, sizes: '512x512' },
+          { src: art, sizes: '256x256' },
+          { src: art, sizes: '96x96' },
+        ] : [],
+      });
+      navigator.mediaSession.setActionHandler('play', () => setIsPlaying(true));
+      navigator.mediaSession.setActionHandler('pause', () => setIsPlaying(false));
+      navigator.mediaSession.setActionHandler('previoustrack', () => handlePrev());
+      navigator.mediaSession.setActionHandler('nexttrack', () => handleNext());
+      navigator.mediaSession.setActionHandler('seekto', (d) => {
+        const a = audioRef.current;
+        if (a && d.seekTime != null) { a.currentTime = d.seekTime; }
+      });
+    } catch (e) {}
+  }, [currentTrack, currentAlbum]);
+
+  useEffect(() => {
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+    }
+  }, [isPlaying]);
 
   const showHeader = screen !== 'landing';
   const showPlayer = currentTrack !== null;
