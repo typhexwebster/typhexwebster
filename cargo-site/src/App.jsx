@@ -908,10 +908,11 @@ const timecode = (sec) => {
   return `00:${pad(m)}:${pad(s)}:${pad(f)}`;
 };
 
-const NowPlayingBar = ({ track, album, isPlaying, phase, minimized, tweaks, onToggle, onPrev, onNext, onClose, onExpand, progress, onSeek }) => {
+const NowPlayingBar = ({ track, album, isPlaying, phase, minimized, tweaks, onToggle, onPrev, onNext, onClose, onExpand, progress, currentTime, duration, onSeek }) => {
   if (phase === 'closed' || !track) return null;
-  const total = parseDur(track?.duration);
-  const cur = total * progress;
+  // Echte Datei-Länge bevorzugen; nur bis Metadaten geladen sind auf die getippte Dauer zurückfallen.
+  const total = duration > 0 ? duration : parseDur(track?.duration);
+  const cur = duration > 0 ? currentTime : total * progress;
   return (
     <>
         <div
@@ -1099,6 +1100,8 @@ const App = () => {
   const [currentAlbum, setCurrentAlbum] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [audioCur, setAudioCur] = useState(0);
+  const [audioDur, setAudioDur] = useState(0);
   const [playerPhase, setPlayerPhase] = useState('closed');
   const [minimized, setMinimized] = useState(false);
   const closeTimerRef = useRef(null);
@@ -1151,6 +1154,7 @@ const App = () => {
   useEffect(() => {
     const a = audioRef.current;
     if (!a) return;
+    setAudioCur(0); setAudioDur(0);
     const url = currentTrack?.file || '';
     if (url) {
       if (a.getAttribute('src') !== url) { a.src = url; a.load(); }
@@ -1175,6 +1179,8 @@ const App = () => {
     const a = audioRef.current;
     if (a && a.duration) {
       setProgress(a.currentTime / a.duration);
+      setAudioCur(a.currentTime);
+      setAudioDur(a.duration);
       if ('mediaSession' in navigator && navigator.mediaSession.setPositionState) {
         try {
           navigator.mediaSession.setPositionState({
@@ -1357,12 +1363,15 @@ const App = () => {
         onClose={handleClosePlayer}
         onExpand={scheduleMinimize}
         progress={progress}
+        currentTime={audioCur}
+        duration={audioDur}
         onSeek={handleSeek} />
 
           <audio
         ref={audioRef}
         preload="metadata"
         onTimeUpdate={handleTimeUpdate}
+        onLoadedMetadata={() => { const a = audioRef.current; if (a && isFinite(a.duration)) setAudioDur(a.duration); }}
         onEnded={handleNext}
         style={{ display: 'none' }} />
 
