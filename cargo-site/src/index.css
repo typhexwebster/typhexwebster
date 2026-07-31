@@ -714,8 +714,8 @@
     }
 
     .dl-circle {
-      width: 52px;
-      height: 52px;
+      width: 44px;
+      height: 44px;
       border-radius: 50%;
       border: 1.5px solid var(--red);
       display: flex;
@@ -1683,8 +1683,8 @@
       margin-bottom: 4px;
     }
     .action-circle {
-      width: 52px;
-      height: 52px;
+      width: 44px;
+      height: 44px;
       border-radius: 50%;
       border: 1.5px solid var(--red);
       color: var(--red);

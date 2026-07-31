@@ -115,9 +115,13 @@ const InfoReceiptIcon = () =>
       </svg>;
 
 
+// Pegel -> Balkenhöhe: gedämpfte Kurve, damit die Balken im Schnitt schön mittig
+// stehen statt dauernd am Anschlag. Deckel < 1, damit sie selten ganz oben anschlagen.
+const eqMap = (v, gain) => Math.max(0.08, Math.min(0.9, 0.08 + Math.pow(v, 1.6) * gain));
+
 // 3-Band-Equalizer: Bass / Mitten / Höhen — reagiert live auf die Musik (FFT).
 const EQ_3_EDGES = [20, 250, 4000, 20000];
-const EQ_3_GAIN = [1.3, 1.7, 2.4];
+const EQ_3_GAIN = [0.9, 1.3, 1.9];
 const EQ = () => {
   const r0 = useRef(null), r1 = useRef(null), r2 = useRef(null);
   useEffect(() => {
@@ -128,7 +132,7 @@ const EQ = () => {
         const lv = eqAnalyser.levels(EQ_3_EDGES);
         for (let i = 0; i < 3; i++) {
           const b = refs[i].current;
-          if (b) { b.style.animation = 'none'; b.style.transform = `scaleY(${Math.max(0.15, Math.min(1, lv[i] * EQ_3_GAIN[i]))})`; }
+          if (b) { b.style.animation = 'none'; b.style.transform = `scaleY(${eqMap(lv[i], EQ_3_GAIN[i])})`; }
         }
       }
       raf = requestAnimationFrame(tick);
@@ -148,7 +152,7 @@ const EQ = () => {
 
 // 5-Band-Equalizer (Mini-Player): Bass / untere Mitten / Mitten / obere Mitten / Höhen.
 const EQ_5_EDGES = [20, 250, 1000, 2000, 6000, 20000];
-const EQ_5_GAIN = [1.2, 1.4, 1.7, 2.1, 2.7];
+const EQ_5_GAIN = [0.9, 1.1, 1.4, 1.7, 2.0];
 const EQMini = ({ playing }) => {
   const refs = [useRef(null), useRef(null), useRef(null), useRef(null), useRef(null)];
   useEffect(() => {
@@ -158,7 +162,7 @@ const EQMini = ({ playing }) => {
         const lv = eqAnalyser.levels(EQ_5_EDGES);
         for (let i = 0; i < 5; i++) {
           const b = refs[i].current;
-          if (b) { b.style.animation = 'none'; b.style.transform = `scaleY(${Math.max(0.14, Math.min(1, lv[i] * EQ_5_GAIN[i]))})`; }
+          if (b) { b.style.animation = 'none'; b.style.transform = `scaleY(${eqMap(lv[i], EQ_5_GAIN[i])})`; }
         }
       }
       raf = requestAnimationFrame(tick);

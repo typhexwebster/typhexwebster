@@ -27,7 +27,7 @@ export function start() {
       source = ctx.createMediaElementSource(el);
       analyser = ctx.createAnalyser();
       analyser.fftSize = 2048;
-      analyser.smoothingTimeConstant = 0.8; // flüssige, natürliche Bewegung
+      analyser.smoothingTimeConstant = 0.86; // flüssige, ruhige Bewegung
       data = new Uint8Array(analyser.frequencyBinCount);
       source.connect(analyser);
       analyser.connect(ctx.destination);
