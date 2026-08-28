@@ -34,7 +34,12 @@ export async function loadContent() {
   if (!supabase) { console.warn('[cargo] Supabase nicht konfiguriert – überspringe Laden.'); return; }
   const [albumsRes, tracksRes, galleryRes, siteRes] = await Promise.all([
     supabase.from('albums').select('*').eq('published', true).order('sort_order', { ascending: true }),
-    supabase.from('tracks').select('*').order('track_no', { ascending: true }),
+    // Bewusst OHNE eq_data: die Frequenzdaten sind pro Track ~100 KB und
+    // würden den Seitenstart aufblähen. Sie werden erst geladen, wenn ein
+    // Track tatsächlich abgespielt wird (siehe loadTrackEq unten).
+    supabase.from('tracks')
+      .select('id,album_id,track_no,title,artist,duration,audio_path')
+      .order('track_no', { ascending: true }),
     supabase.from('gallery_items').select('*').eq('published', true).order('sort_order', { ascending: true }),
     supabase.from('site_content').select('*'),
   ]);
@@ -45,6 +50,7 @@ export async function loadContent() {
   (tracksRes.data || []).forEach((t) => {
     (tracksByAlbum[t.album_id] = tracksByAlbum[t.album_id] || []).push({
       id: t.track_no,
+      dbId: t.id,            // echte Track-ID, für das Nachladen der EQ-Daten
       title: t.title,
       artist: t.artist || 'Typhex Webster',
       duration: t.duration || '',
@@ -66,8 +72,11 @@ export async function loadContent() {
       availability: a.availability || '',
       availabilityLinks: links,
       description: a.description || '',
+      copyright: a.copyright || '',   // leer -> es wird keine Zeile angezeigt
       totalTracks: tracks.length,
       duration: a.duration || '',
+      // Feste Ersatzfarbe für Alben ohne Cover. Im Admin nicht mehr
+      // einstellbar, deshalb hier fest hinterlegt.
       coverColor: a.cover_color || '#8B3A1A',
       downloadInfo: {
         format: a.download_format || 'M4A (AAC)',
@@ -95,4 +104,24 @@ export async function loadContent() {
   GALLERY.videos = g.videos;
 
   (siteRes.data || []).forEach((row) => { SITE[row.key] = row.value; });
+}
+
+// ── EQ-Daten eines einzelnen Tracks nachladen ────────────────────────
+// Wird erst beim Abspielen aufgerufen, nicht beim Seitenstart. Ergebnisse
+// werden gemerkt, damit ein zweites Anspielen keine neue Abfrage auslöst.
+const eqCache = new Map();
+
+export async function loadTrackEq(dbId) {
+  if (!dbId || !supabase) return null;
+  if (eqCache.has(dbId)) return eqCache.get(dbId);
+  try {
+    const { data, error } = await supabase
+      .from('tracks').select('eq_data').eq('id', dbId).single();
+    const val = error ? null : (data && data.eq_data) || null;
+    eqCache.set(dbId, val);
+    return val;
+  } catch (e) {
+    eqCache.set(dbId, null);
+    return null;
+  }
 }

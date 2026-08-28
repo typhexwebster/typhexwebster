@@ -28,14 +28,24 @@ export default async function handler(req, res) {
         return res.json({ ok: true });
 
       case 'list': {
-        const [albums, tracks, gallery, site] = await Promise.all([
+        const [albums, tracks, gallery, site, analysed] = await Promise.all([
           supabase.from('albums').select('*').order('sort_order', { ascending: true }),
-          supabase.from('tracks').select('*').order('album_id').order('track_no', { ascending: true }),
+          // eq_data bewusst NICHT mitladen — pro Track ~100 KB, die der
+          // Admin für die Übersicht nicht braucht. Welche Tracks bereits
+          // analysiert sind, holt die separate Abfrage darunter.
+          supabase.from('tracks')
+            .select('id,album_id,track_no,title,artist,duration,audio_path')
+            .order('album_id').order('track_no', { ascending: true }),
           supabase.from('gallery_items').select('*').order('sort_order', { ascending: true }),
           supabase.from('site_content').select('*'),
+          supabase.from('tracks').select('id').not('eq_data', 'is', null),
         ]);
         for (const r of [albums, tracks, gallery, site]) if (r.error) throw r.error;
-        return res.json({ albums: albums.data, tracks: tracks.data, gallery: gallery.data, site: site.data });
+        const analysedIds = analysed.error ? [] : (analysed.data || []).map((r) => r.id);
+        return res.json({
+          albums: albums.data, tracks: tracks.data, gallery: gallery.data, site: site.data,
+          analysedTrackIds: analysedIds,
+        });
       }
 
       case 'saveAlbum': {
@@ -44,6 +54,30 @@ export default async function handler(req, res) {
         if (error) throw error;
         return res.json({ ok: true, data });
       }
+      // Reihenfolge der Alben nach dem Ziehen speichern.
+      // Bewusst UPDATE statt upsert: so werden nur die sort_order-Werte
+      // angefasst und kein anderes Feld überschrieben.
+      case 'reorderAlbums': {
+        const { order } = req.body; // [{ id, sort_order }, ...]
+        if (!Array.isArray(order)) return res.status(400).json({ error: 'order fehlt' });
+        for (const it of order) {
+          const { error } = await supabase.from('albums')
+            .update({ sort_order: Number(it.sort_order) || 0 }).eq('id', it.id);
+          if (error) throw error;
+        }
+        return res.json({ ok: true });
+      }
+
+      // Frequenzdaten eines bestehenden Tracks separat sichern, damit die
+      // Analyse sofort wirkt und nicht erst beim Speichern des Albums.
+      case 'saveTrackEq': {
+        const { id, eq_data } = req.body;
+        if (!id) return res.status(400).json({ error: 'id fehlt' });
+        const { error } = await supabase.from('tracks').update({ eq_data }).eq('id', id);
+        if (error) throw error;
+        return res.json({ ok: true });
+      }
+
       case 'deleteAlbum': {
         const { id } = req.body;
         const { error } = await supabase.from('albums').delete().eq('id', id);

@@ -4,12 +4,17 @@ import {
   useTweaks, TweaksPanel, TweakSection, TweakRow, TweakSlider, TweakToggle,
   TweakRadio, TweakSelect, TweakText, TweakNumber, TweakColor, TweakButton
 } from './tweaks-panel.jsx';
-import { ALBUMS, LIBRARY_IDS, COVER_IMAGES, GALLERY, SITE } from './content.js';
-import * as eqAnalyser from './eqAnalyser.js';
+import { ALBUMS, LIBRARY_IDS, COVER_IMAGES, GALLERY, SITE, loadTrackEq } from './content.js';
+import * as eqData from './eqData.js';
 
 
 
 const { useState, useEffect, useRef, useCallback } = React;
+
+// Das laufende <audio>-Element auf Modulebene, damit die EQ-Balken die
+// Wiedergabezeit pro Bild direkt ablesen können, ohne dass dafür jedes
+// Mal React neu rendert. Wird unten in App gesetzt.
+let playbackEl = null;
 
 // ─── DATA ───────────────────────────────────────────────────────────
 // ALBUMS -> aus content.js (Supabase)
@@ -119,27 +124,52 @@ const InfoReceiptIcon = () =>
 // stehen statt dauernd am Anschlag. Deckel < 1, damit sie selten ganz oben anschlagen.
 const eqMap = (v, gain) => Math.max(0.08, Math.min(0.9, 0.08 + Math.pow(v, 1.6) * gain));
 
-// 3-Band-Equalizer: Bass / Mitten / Höhen — reagiert live auf die Musik (FFT).
-const EQ_3_EDGES = [20, 250, 4000, 20000];
-const EQ_3_GAIN = [0.9, 1.3, 1.9];
-const EQ = () => {
-  const r0 = useRef(null), r1 = useRef(null), r2 = useRef(null);
+// Wie schnell die Balken einem neuen Pegel folgen (0..1 pro Bild).
+// Kleiner = träger und weicher, größer = direkter und nervöser.
+// 0.22 kommt der Trägheit des früheren Live-Analyzers (smoothingTimeConstant
+// 0.86) sehr nahe. Höher = direkter, niedriger = weicher.
+const EQ_FOLLOW = 0.22;
+
+// Gemeinsame Animationsschleife für beide EQ-Varianten.
+// Die Pegel kommen aus den im Admin vorberechneten Frequenzdaten und
+// werden über die Wiedergabezeit abgegriffen — kein Web Audio nötig.
+// Ohne Daten (oder bei einem noch nicht analysierten Track) fassen wir
+// die Balken nicht an, dann läuft weiter die CSS-Animation.
+function useEqBars(refs, count, gains) {
   useEffect(() => {
-    const refs = [r0, r1, r2];
     let raf;
+    const smooth = new Array(count).fill(0);
+    let drivenByData = false;
     const tick = () => {
-      if (eqAnalyser.isReady()) {
-        const lv = eqAnalyser.levels(EQ_3_EDGES);
-        for (let i = 0; i < 3; i++) {
+      const live = eqData.hasData() && playbackEl && !playbackEl.paused;
+      if (live) {
+        const lv = eqData.levelsAt(playbackEl.currentTime, count);
+        for (let i = 0; i < count; i++) {
+          smooth[i] += (lv[i] - smooth[i]) * EQ_FOLLOW;
           const b = refs[i].current;
-          if (b) { b.style.animation = 'none'; b.style.transform = `scaleY(${eqMap(lv[i], EQ_3_GAIN[i])})`; }
+          if (b) { b.style.animation = 'none'; b.style.transform = `scaleY(${eqMap(smooth[i], gains[i])})`; }
         }
+        drivenByData = true;
+      } else if (drivenByData && !eqData.hasData()) {
+        // Track ohne Analyse: Balken wieder der CSS-Animation überlassen.
+        for (let i = 0; i < count; i++) {
+          const b = refs[i].current;
+          if (b) { b.style.animation = ''; b.style.transform = ''; }
+        }
+        drivenByData = false;
       }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, []);
+}
+
+// 3-Band-Equalizer: Bass / Mitten / Höhen — folgt der echten Musik.
+const EQ_3_GAIN = [0.9, 1.3, 1.9];
+const EQ = () => {
+  const r0 = useRef(null), r1 = useRef(null), r2 = useRef(null);
+  useEqBars([r0, r1, r2], 3, EQ_3_GAIN);
   const barStyle = { height: '100%', transformOrigin: 'bottom' };
   return (
     <div className="eq">
@@ -151,25 +181,10 @@ const EQ = () => {
 };
 
 // 5-Band-Equalizer (Mini-Player): Bass / untere Mitten / Mitten / obere Mitten / Höhen.
-const EQ_5_EDGES = [20, 250, 1000, 2000, 6000, 20000];
 const EQ_5_GAIN = [0.9, 1.1, 1.4, 1.7, 2.0];
 const EQMini = ({ playing }) => {
   const refs = [useRef(null), useRef(null), useRef(null), useRef(null), useRef(null)];
-  useEffect(() => {
-    let raf;
-    const tick = () => {
-      if (eqAnalyser.isReady()) {
-        const lv = eqAnalyser.levels(EQ_5_EDGES);
-        for (let i = 0; i < 5; i++) {
-          const b = refs[i].current;
-          if (b) { b.style.animation = 'none'; b.style.transform = `scaleY(${eqMap(lv[i], EQ_5_GAIN[i])})`; }
-        }
-      }
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, []);
+  useEqBars(refs, 5, EQ_5_GAIN);
   return (
     <div className={`eq-mini ${playing ? '' : 'paused'}`} style={{ alignItems: 'flex-end' }}>
       {refs.map((r, i) => <span key={i} ref={r} style={{ transformOrigin: 'bottom' }} />)}
@@ -865,8 +880,10 @@ const AlbumDetail = ({ album, onBack, onPlay, currentTrack, isPlaying, variant =
         })}
           </div>
 
+          {/* Copyright kommt aus der Albumbearbeitung im Admin.
+              Ist das Feld leer, erscheint auch kein Trennpunkt. */}
           <div className="detail-meta">
-            {album.totalTracks} Songs, {album.duration} · © CARGO 2026. All rights reserved.
+            {album.totalTracks} Songs, {album.duration}{album.copyright ? ' · ' + album.copyright : ''}
           </div>
 
           {descOpen && ReactDOM.createPortal(
@@ -1203,11 +1220,22 @@ const App = () => {
   // only the seek/reset command; the bar reports track-end via onEnded.
   const handleEnded = useCallback(() => {setIsPlaying(false);}, []);
 
-  // Auf Handys und in Safari wird der Analyzer gar nicht aktiv (siehe
-  // eqAnalyser.js) — dort hat die Hintergrund-Wiedergabe Vorrang und die
-  // EQ-Balken laufen auf ihrer CSS-Animation. Am Desktop hängt er direkt
-  // an diesem Element und analysiert live.
-  useEffect(() => { if (audioRef.current) eqAnalyser.attach(audioRef.current); }, []);
+  // Das Audio-Element für die EQ-Balken bekannt machen. Mehr passiert hier
+  // nicht — kein Web Audio, kein crossOrigin. Genau deshalb darf iOS im
+  // Hintergrund weiterspielen.
+  useEffect(() => { playbackEl = audioRef.current; }, []);
+
+  // Frequenzdaten des laufenden Tracks nachladen (erst beim Abspielen).
+  // Tracks ohne Analyse liefern null — dann laufen die Balken auf der
+  // CSS-Animation weiter, es geht also nichts kaputt.
+  useEffect(() => {
+    eqData.clear();
+    const id = currentTrack?.dbId;
+    if (!id) return;
+    let cancelled = false;
+    loadTrackEq(id).then((json) => { if (!cancelled) eqData.setTrack(json); });
+    return () => { cancelled = true; };
+  }, [currentTrack]);
 
   // ── Echter Audio-Player ───────────────────────────────────────────
   // Lädt die R2-Datei des aktuellen Tracks und spielt/pausiert sie.
@@ -1270,7 +1298,6 @@ const App = () => {
   };
 
   const handlePlay = (track, album) => {
-    eqAnalyser.start(); // Analyzer nach Nutzer-Geste starten
     if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
     setPlayerPhase('open');
     if (currentTrack?.id === track.id && currentAlbum?.id === album.id) {
