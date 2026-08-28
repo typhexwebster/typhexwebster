@@ -1203,7 +1203,10 @@ const App = () => {
   // only the seek/reset command; the bar reports track-end via onEnded.
   const handleEnded = useCallback(() => {setIsPlaying(false);}, []);
 
-  // Analyzer an das <audio>-Element hängen (setzt auch crossOrigin).
+  // Analyzer kennt das <audio>-Element, hängt es aber NICHT an Web Audio.
+  // (Sonst würde iOS die Wiedergabe beim Sperren des Bildschirms abwürgen —
+  // siehe Kommentar oben in eqAnalyser.js.) Die Analyse läuft über ein
+  // zweites, lautloses Element, das dem Player hinterherläuft.
   useEffect(() => { if (audioRef.current) eqAnalyser.attach(audioRef.current); }, []);
 
   // ── Echter Audio-Player ───────────────────────────────────────────
@@ -1219,6 +1222,7 @@ const App = () => {
       a.removeAttribute('src');
       a.load();
     }
+    eqAnalyser.sync();
   }, [currentTrack]);
 
   useEffect(() => {
@@ -1230,6 +1234,7 @@ const App = () => {
     } else {
       a.pause();
     }
+    eqAnalyser.sync();
   }, [isPlaying, currentTrack]);
 
   const handleTimeUpdate = () => {
@@ -1306,6 +1311,7 @@ const App = () => {
     setProgress(frac);
     const a = audioRef.current;
     if (a && a.duration) a.currentTime = frac * a.duration;
+    eqAnalyser.sync();
   };
 
   // ── Media Session: Cover/Titel/Artist auf Sperrbildschirm & OS-Player ──
@@ -1330,7 +1336,7 @@ const App = () => {
       navigator.mediaSession.setActionHandler('nexttrack', () => handleNext());
       navigator.mediaSession.setActionHandler('seekto', (d) => {
         const a = audioRef.current;
-        if (a && d.seekTime != null) { a.currentTime = d.seekTime; }
+        if (a && d.seekTime != null) { a.currentTime = d.seekTime; eqAnalyser.sync(); }
       });
     } catch (e) {}
   }, [currentTrack, currentAlbum]);
@@ -1428,6 +1434,7 @@ const App = () => {
           <audio
         ref={audioRef}
         preload="metadata"
+        playsInline
         crossOrigin="anonymous"
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={() => { const a = audioRef.current; if (a && isFinite(a.duration)) setAudioDur(a.duration); }}
