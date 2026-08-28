@@ -1,27 +1,35 @@
 // ─────────────────────────────────────────────────────────────
 // eqAnalyser.js — echter Frequenz-Analyzer (Web Audio API / FFT).
 //
-// WICHTIG (Hintergrund-Wiedergabe):
-// Das echte <audio>-Element des Players wird NIEMALS an einen AudioContext
-// gehängt. Sobald man createMediaElementSource() auf ein Element anwendet,
-// läuft dessen Ton dauerhaft durch die Web-Audio-Kette — und iOS friert
-// Web Audio ein, sobald der Bildschirm gesperrt wird oder Safari in den
-// Hintergrund geht. Ergebnis wäre: Sperrbildschirm zeigt den Track, aber
-// es kommt kein Ton mehr.
+// ═══ REGEL NUMMER EINS ═══
+// Die Wiedergabe hat Vorrang vor dem EQ. Immer.
 //
-// Deshalb analysieren wir ein ZWEITES, lautloses Audio-Element ("Probe"),
-// das dieselbe Datei abspielt und dem echten Player hinterherläuft.
-// Die Probe hängt an Analyser -> Gain(0) -> Destination:
-//   * Gain 0  = absolut lautlos
-//   * aber mit Verbindung zur Destination, sonst rendert der Browser den
-//     Graphen gar nicht und der Analyser bekäme nur Nullen.
+// Warum: Auf iOS schließen sich Web Audio und Hintergrund-Wiedergabe aus.
+// Sobald eine Seite einen aktiven AudioContext mit Verbindung zum Ausgang
+// hat, behandelt iOS die Audio-Session der GANZEN Seite als Web-Audio-
+// Session — und die wird stummgeschaltet, sobald der Bildschirm gesperrt
+// wird oder Safari in den Hintergrund geht. Das gilt unabhängig davon,
+// welches Element den Ton tatsächlich erzeugt. Es genügt also nicht, das
+// Player-Element aus dem Graphen herauszuhalten; der Graph darf auf diesen
+// Geräten gar nicht erst existieren.
 //
-// Die Probe wird pausiert, sobald die Seite unsichtbar ist. Im Hintergrund
-// läuft dann ausschließlich das echte <audio>-Element — ganz normal, wie
-// bei jedem anderen Musik-Player.
+// Deshalb: Auf Touch-Geräten und in Safari wird hier NICHTS angelegt —
+// kein AudioContext, kein zweites Element, keine Verbindung zum Ausgang.
+// Das <audio>-Element des Players bleibt ein ganz normales <audio>-Element
+// und verhält sich wie jeder andere Musik-Player: Bildschirm aus, App im
+// Hintergrund, Sperrbildschirm-Steuerung — alles läuft weiter.
 //
-// Hinweis: funktioniert nur, wenn die Audiodatei CORS-lesbar ist
-// (crossOrigin = 'anonymous' + Access-Control-Allow-Origin von R2).
+// Die EQ-Balken fallen dort auf ihre CSS-Animation zurück (Keyframes
+// `eqAnim` / `eqMini` in index.css). Sie bewegen sich also weiterhin,
+// nur eben nicht im Takt der Musik.
+//
+// Am Desktop (Chrome/Firefox, kein Touch) läuft der echte Analyzer über
+// ein zweites, lautloses Element. Dort gibt es kein Sperrbildschirm-
+// Problem, also kostet es nichts.
+//
+// Zum Testen lässt sich die Automatik per URL überschreiben:
+//   ?eq=off  -> Analyzer aus, auch am Desktop
+//   ?eq=on   -> Analyzer an, auch auf dem Handy (NUR zum Gegentesten!)
 // ─────────────────────────────────────────────────────────────
 
 let ctx = null;
@@ -35,19 +43,53 @@ let player = null;   // das echte <audio> — bleibt unangetastet
 let ready = false;
 let failed = false;
 let timer = 0;
+let allowed = null;  // Cache für die Geräte-Entscheidung
 
 const DRIFT = 0.35;  // Sekunden Abweichung, ab der die Probe nachgezogen wird
 
-// Das echte Player-Element merken. Bewusst KEIN Web-Audio-Anschluss hier.
+// Darf auf diesem Gerät überhaupt ein AudioContext entstehen?
+function webAudioAllowed() {
+  if (allowed !== null) return allowed;
+  allowed = false;
+  try {
+    // Manueller Schalter zum Gegentesten
+    const q = new URLSearchParams(window.location.search).get('eq');
+    if (q === 'off') return (allowed = false);
+    if (q === 'on') return (allowed = true);
+
+    // Touch-Gerät -> iPhone, iPad, Android. Hier niemals Web Audio.
+    // (iPadOS meldet sich als Mac, wird aber über maxTouchPoints erkannt.)
+    const touch = (navigator.maxTouchPoints || 0) > 0 || 'ontouchstart' in window;
+    if (touch) return (allowed = false);
+
+    // Safari friert den AudioContext auch am Mac ein, sobald das Fenster
+    // in den Hintergrund geht (WebKit-Bug 231105). Also ebenfalls aus.
+    const ua = navigator.userAgent || '';
+    const isSafari = /Safari/.test(ua) && !/Chrome|Chromium|Edg|OPR|Firefox/.test(ua);
+    if (isSafari) return (allowed = false);
+
+    allowed = true;
+  } catch (e) {
+    allowed = false;
+  }
+  return allowed;
+}
+
+export function isEnabled() {
+  return webAudioAllowed();
+}
+
+// Das echte Player-Element merken.
+// Bewusst KEIN Web-Audio-Anschluss und bewusst KEIN crossOrigin: Das
+// Playback soll ein ganz normaler Media-Request bleiben.
 export function attach(audioEl) {
   player = audioEl;
-  if (player) player.crossOrigin = 'anonymous';
 }
 
 // Muss nach einer Nutzer-Geste laufen (Klick auf Play) — sonst blockt der
-// Browser den AudioContext.
+// Browser den AudioContext. Auf Mobilgeräten passiert hier gar nichts.
 export function start() {
-  if (failed || !player) return;
+  if (!webAudioAllowed() || failed || !player) return;
   try {
     if (!ctx) {
       const AC = window.AudioContext || window.webkitAudioContext;
@@ -58,8 +100,6 @@ export function start() {
       probe = new Audio();
       probe.crossOrigin = 'anonymous';
       probe.preload = 'auto';
-      probe.playsInline = true;
-      probe.setAttribute('playsinline', '');
 
       source = ctx.createMediaElementSource(probe);
       analyser = ctx.createAnalyser();
@@ -94,8 +134,6 @@ function stopProbe() {
 
 function onVisibility() {
   if (document.hidden) {
-    // Seite im Hintergrund / Bildschirm aus: Probe stilllegen, damit das
-    // echte Element allein weiterläuft und die Media-Session eindeutig ist.
     stopProbe();
   } else {
     if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {});
@@ -136,6 +174,8 @@ export function isReady() {
 
 // Liefert je Frequenzband (definiert über die Grenzen in Hz) einen Pegel 0..1.
 // edges = [20, 250, 1000, ...] -> Bänder [20-250], [250-1000], ...
+// Ohne Analyzer kommen Nullen zurück; die Balken behalten dann ihre
+// CSS-Animation, weil App.jsx sie in dem Fall nicht überschreibt.
 export function levels(edges) {
   const n = edges.length - 1;
   if (!isReady()) return new Array(n).fill(0);

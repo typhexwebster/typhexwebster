@@ -1203,10 +1203,10 @@ const App = () => {
   // only the seek/reset command; the bar reports track-end via onEnded.
   const handleEnded = useCallback(() => {setIsPlaying(false);}, []);
 
-  // Analyzer kennt das <audio>-Element, hängt es aber NICHT an Web Audio.
-  // (Sonst würde iOS die Wiedergabe beim Sperren des Bildschirms abwürgen —
-  // siehe Kommentar oben in eqAnalyser.js.) Die Analyse läuft über ein
-  // zweites, lautloses Element, das dem Player hinterherläuft.
+  // Der Analyzer kennt das <audio>-Element nur, er fasst es nicht an.
+  // Auf Handys wird er gar nicht aktiv (siehe eqAnalyser.js) — dort hat
+  // die Hintergrund-Wiedergabe Vorrang und die EQ-Balken laufen auf ihrer
+  // CSS-Animation.
   useEffect(() => { if (audioRef.current) eqAnalyser.attach(audioRef.current); }, []);
 
   // ── Echter Audio-Player ───────────────────────────────────────────
@@ -1431,11 +1431,12 @@ const App = () => {
         duration={audioDur}
         onSeek={handleSeek} />
 
+          {/* Ganz normales <audio>: kein crossOrigin, kein Web Audio.
+              Genau so darf iOS im Hintergrund weiterspielen. */}
           <audio
         ref={audioRef}
         preload="metadata"
         playsInline
-        crossOrigin="anonymous"
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={() => { const a = audioRef.current; if (a && isFinite(a.duration)) setAudioDur(a.duration); }}
         onEnded={handleNext}
