@@ -9,23 +9,27 @@
 // hat, behandelt iOS die Audio-Session der GANZEN Seite als Web-Audio-
 // Session — und die wird stummgeschaltet, sobald der Bildschirm gesperrt
 // wird oder Safari in den Hintergrund geht. Das gilt unabhängig davon,
-// welches Element den Ton tatsächlich erzeugt. Es genügt also nicht, das
-// Player-Element aus dem Graphen herauszuhalten; der Graph darf auf diesen
-// Geräten gar nicht erst existieren.
+// welches Element den Ton erzeugt. Auf diesen Geräten darf also gar kein
+// Graph entstehen.
 //
-// Deshalb: Auf Touch-Geräten und in Safari wird hier NICHTS angelegt —
-// kein AudioContext, kein zweites Element, keine Verbindung zum Ausgang.
-// Das <audio>-Element des Players bleibt ein ganz normales <audio>-Element
-// und verhält sich wie jeder andere Musik-Player: Bildschirm aus, App im
-// Hintergrund, Sperrbildschirm-Steuerung — alles läuft weiter.
+// Deshalb zwei klar getrennte Wege:
 //
-// Die EQ-Balken fallen dort auf ihre CSS-Animation zurück (Keyframes
-// `eqAnim` / `eqMini` in index.css). Sie bewegen sich also weiterhin,
-// nur eben nicht im Takt der Musik.
+//   Handy / Safari  ->  Es passiert hier NICHTS. Kein AudioContext, kein
+//                       crossOrigin, keine Verbindung zum Ausgang. Das
+//                       <audio> bleibt ein ganz normales <audio> und darf
+//                       im Hintergrund weiterspielen wie jeder andere
+//                       Musik-Player. Die EQ-Balken laufen dort auf ihrer
+//                       CSS-Animation (Keyframes in index.css).
 //
-// Am Desktop (Chrome/Firefox, kein Touch) läuft der echte Analyzer über
-// ein zweites, lautloses Element. Dort gibt es kein Sperrbildschirm-
-// Problem, also kostet es nichts.
+//   Desktop         ->  Der Player hängt direkt im Graphen und wird live
+//                       analysiert. Chrome und Firefox lassen den Audio-
+//                       Context im Hintergrund weiterlaufen, hier gibt es
+//                       das Sperrbildschirm-Problem nicht.
+//
+// Bewusst KEIN zweites Element mehr für die Analyse: Zwei parallele
+// Anfragen auf dieselbe Audiodatei blockieren sich in Chrome gegenseitig
+// über den Cache-Lock — der Player wartet dann darauf, dass die Analyse-
+// Kopie fertig geladen ist, und die Musik startet verzögert oder gar nicht.
 //
 // Zum Testen lässt sich die Automatik per URL überschreiben:
 //   ?eq=off  -> Analyzer aus, auch am Desktop
@@ -35,17 +39,10 @@
 let ctx = null;
 let source = null;
 let analyser = null;
-let gain = null;
 let data = null;
-
-let probe = null;    // zweites, lautloses Element — nur für die Analyse
-let player = null;   // das echte <audio> — bleibt unangetastet
+let el = null;
 let ready = false;
-let failed = false;
-let timer = 0;
 let allowed = null;  // Cache für die Geräte-Entscheidung
-
-const DRIFT = 0.35;  // Sekunden Abweichung, ab der die Probe nachgezogen wird
 
 // Darf auf diesem Gerät überhaupt ein AudioContext entstehen?
 function webAudioAllowed() {
@@ -79,97 +76,42 @@ export function isEnabled() {
   return webAudioAllowed();
 }
 
-// Das echte Player-Element merken.
-// Bewusst KEIN Web-Audio-Anschluss und bewusst KEIN crossOrigin: Das
-// Playback soll ein ganz normaler Media-Request bleiben.
+// Das <audio>-Element merken.
+// crossOrigin wird NUR gesetzt, wenn wirklich analysiert wird — sonst soll
+// das Playback ein ganz normaler Media-Request bleiben. Muss vor dem ersten
+// src passieren, deshalb schon hier und nicht erst in start().
 export function attach(audioEl) {
-  player = audioEl;
+  el = audioEl;
+  if (el && webAudioAllowed()) el.crossOrigin = 'anonymous';
 }
 
 // Muss nach einer Nutzer-Geste laufen (Klick auf Play) — sonst blockt der
 // Browser den AudioContext. Auf Mobilgeräten passiert hier gar nichts.
 export function start() {
-  if (!webAudioAllowed() || failed || !player) return;
+  if (!webAudioAllowed() || !el) return;
   try {
     if (!ctx) {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return;
-
       ctx = new AC();
-
-      probe = new Audio();
-      probe.crossOrigin = 'anonymous';
-      probe.preload = 'auto';
-
-      source = ctx.createMediaElementSource(probe);
+      source = ctx.createMediaElementSource(el);
       analyser = ctx.createAnalyser();
       analyser.fftSize = 2048;
       analyser.smoothingTimeConstant = 0.86; // flüssige, ruhige Bewegung
-      gain = ctx.createGain();
-      gain.gain.value = 0;                   // lautlos, aber im Render-Graph
-
-      source.connect(analyser);
-      analyser.connect(gain);
-      gain.connect(ctx.destination);
-
       data = new Uint8Array(analyser.frequencyBinCount);
+      source.connect(analyser);
+      analyser.connect(ctx.destination);
       ready = true;
-
-      document.addEventListener('visibilitychange', onVisibility);
-      timer = setInterval(sync, 900);
     }
     if (ctx.state === 'suspended') ctx.resume();
-    sync();
   } catch (e) {
     console.warn('[eq] Analyzer nicht verfügbar:', e && e.message);
-    failed = true;
     ready = false;
-    stopProbe();
   }
-}
-
-function stopProbe() {
-  try { if (probe) probe.pause(); } catch (e) {}
-}
-
-function onVisibility() {
-  if (document.hidden) {
-    stopProbe();
-  } else {
-    if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {});
-    sync();
-  }
-}
-
-// Probe an den echten Player angleichen: Quelle, Position, Play/Pause.
-export function sync() {
-  if (!ready || failed || !player || !probe) return;
-  try {
-    if (document.hidden) { stopProbe(); return; }
-
-    const url = player.currentSrc || player.getAttribute('src') || '';
-    if (!url) { stopProbe(); return; }
-
-    if (probe.src !== url) {
-      probe.src = url;
-      try { probe.currentTime = player.currentTime || 0; } catch (e) {}
-    }
-
-    if (player.paused) { stopProbe(); return; }
-
-    if (Math.abs((probe.currentTime || 0) - (player.currentTime || 0)) > DRIFT) {
-      try { probe.currentTime = player.currentTime; } catch (e) {}
-    }
-
-    if (probe.paused) {
-      const p = probe.play();
-      if (p && p.catch) p.catch(() => {});
-    }
-  } catch (e) {}
 }
 
 export function isReady() {
-  return ready && !failed && !!analyser && !!data && !document.hidden;
+  return ready && !!analyser && !!data;
 }
 
 // Liefert je Frequenzband (definiert über die Grenzen in Hz) einen Pegel 0..1.

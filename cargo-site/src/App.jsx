@@ -1203,10 +1203,10 @@ const App = () => {
   // only the seek/reset command; the bar reports track-end via onEnded.
   const handleEnded = useCallback(() => {setIsPlaying(false);}, []);
 
-  // Der Analyzer kennt das <audio>-Element nur, er fasst es nicht an.
-  // Auf Handys wird er gar nicht aktiv (siehe eqAnalyser.js) — dort hat
-  // die Hintergrund-Wiedergabe Vorrang und die EQ-Balken laufen auf ihrer
-  // CSS-Animation.
+  // Auf Handys und in Safari wird der Analyzer gar nicht aktiv (siehe
+  // eqAnalyser.js) — dort hat die Hintergrund-Wiedergabe Vorrang und die
+  // EQ-Balken laufen auf ihrer CSS-Animation. Am Desktop hängt er direkt
+  // an diesem Element und analysiert live.
   useEffect(() => { if (audioRef.current) eqAnalyser.attach(audioRef.current); }, []);
 
   // ── Echter Audio-Player ───────────────────────────────────────────
@@ -1222,7 +1222,6 @@ const App = () => {
       a.removeAttribute('src');
       a.load();
     }
-    eqAnalyser.sync();
   }, [currentTrack]);
 
   useEffect(() => {
@@ -1234,7 +1233,6 @@ const App = () => {
     } else {
       a.pause();
     }
-    eqAnalyser.sync();
   }, [isPlaying, currentTrack]);
 
   const handleTimeUpdate = () => {
@@ -1311,7 +1309,6 @@ const App = () => {
     setProgress(frac);
     const a = audioRef.current;
     if (a && a.duration) a.currentTime = frac * a.duration;
-    eqAnalyser.sync();
   };
 
   // ── Media Session: Cover/Titel/Artist auf Sperrbildschirm & OS-Player ──
@@ -1336,7 +1333,7 @@ const App = () => {
       navigator.mediaSession.setActionHandler('nexttrack', () => handleNext());
       navigator.mediaSession.setActionHandler('seekto', (d) => {
         const a = audioRef.current;
-        if (a && d.seekTime != null) { a.currentTime = d.seekTime; eqAnalyser.sync(); }
+        if (a && d.seekTime != null) { a.currentTime = d.seekTime; }
       });
     } catch (e) {}
   }, [currentTrack, currentAlbum]);
