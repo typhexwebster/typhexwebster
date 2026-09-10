@@ -1717,7 +1717,11 @@
       stroke: currentColor;
       fill: none;
     }
+    /* Das Play-Dreieck wirkt im Kreis leicht nach links versetzt, deshalb
+       der Pixel Ausgleich. Beim Pausensymbol sind die beiden Striche
+       symmetrisch — dort würde derselbe Versatz sie schief stellen. */
     .action-circle.play svg { transform: translateX(1px); }
+    .action-circle.play.is-pause svg { transform: none; }
 
     .redownload-wrap {
       flex: 1;

@@ -868,7 +868,7 @@ const AlbumDetail = ({ album, onBack, onPlay, currentTrack, isPlaying, variant =
                 zurück auf Lied 1. Nur wenn das Album gar nicht aktiv ist,
                 startet er es von vorne. */}
             <button
-              className="action-circle play"
+              className={`action-circle play ${albumIsPlaying ? 'is-pause' : ''}`}
               onClick={() => {
                 if (albumIsCurrent && currentTrack) onPlay(currentTrack, album);
                 else if (album.tracks[0]) onPlay(album.tracks[0], album);
@@ -1020,7 +1020,7 @@ const timecode = (sec) => {
   return `00:${pad(m)}:${pad(s)}:${pad(f)}`;
 };
 
-const NowPlayingBar = ({ track, album, isPlaying, phase, minimized, tweaks, onToggle, onPrev, onNext, onClose, onExpand, progress, currentTime, duration, onSeekTo, canPrev = true }) => {
+const NowPlayingBar = ({ track, album, isPlaying, phase, minimized, tweaks, onToggle, onPrev, onNext, onClose, onExpand, progress, currentTime, duration, onSeekTo, onScrubStart, onScrubEnd, canPrev = true }) => {
   // Ziehen am Fortschrittsbalken. Während des Ziehens folgt die Anzeige
   // sofort dem Finger bzw. der Maus, die Musik springt aber erst beim
   // Loslassen — sonst stottert es bei jeder Bewegung.
@@ -1041,6 +1041,9 @@ const NowPlayingBar = ({ track, album, isPlaying, phase, minimized, tweaks, onTo
     // Pointer einfangen: dadurch laufen Bewegung und Loslassen auch dann
     // hier auf, wenn man beim Ziehen über den Balken hinausgerät.
     try { e.currentTarget.setPointerCapture(e.pointerId); } catch (err) {}
+    // Einklapp-Timer anhalten: der Player darf während des Ziehens nicht
+    // unter dem Finger wegklappen.
+    if (onScrubStart) onScrubStart();
     setDragFrac(fracFromEvent(e.clientX));
   };
   const onPointerMove = (e) => {
@@ -1053,6 +1056,8 @@ const NowPlayingBar = ({ track, album, isPlaying, phase, minimized, tweaks, onTo
     setDragFrac(null);
     try { e.currentTarget.releasePointerCapture(e.pointerId); } catch (err) {}
     if (onSeekTo) onSeekTo(f);
+    // Timer läuft ab jetzt wieder von vorne — volle vier Sekunden.
+    if (onScrubEnd) onScrubEnd();
   };
 
   if (phase === 'closed' || !track) return null;
@@ -1261,12 +1266,29 @@ const App = () => {
   const miniTimerRef = useRef(null);
   const audioRef = useRef(null);
 
-  // After 4s of resting, the open player collapses into a circle. Any call
-  // re-expands it and restarts the 4s countdown.
+  // After 4s of resting, the open player collapses into a circle.
+  const MINI_DELAY = 4000;
+
+  // Klappt den Player aus und startet die Zeit bis zum Einklappen neu.
+  // Nur für bewusste Aktionen des Nutzers — etwa das Antippen eines Liedes
+  // in der Trackliste.
   const scheduleMinimize = useCallback(() => {
     if (miniTimerRef.current) clearTimeout(miniTimerRef.current);
     setMinimized(false);
-    miniTimerRef.current = setTimeout(() => setMinimized(true), 4000);
+    miniTimerRef.current = setTimeout(() => setMinimized(true), MINI_DELAY);
+  }, []);
+
+  // Startet nur die Zeit neu, ohne an der Form des Players zu rühren.
+  // Wichtig für alles, was von allein passiert: Ein Liedwechsel soll einen
+  // eingeklappten Player nicht plötzlich aufklappen.
+  const restartMinimizeTimer = useCallback(() => {
+    if (miniTimerRef.current) clearTimeout(miniTimerRef.current);
+    miniTimerRef.current = setTimeout(() => setMinimized(true), MINI_DELAY);
+  }, []);
+
+  // Solange am Regler gezogen wird, darf nichts einklappen.
+  const holdMinimize = useCallback(() => {
+    if (miniTimerRef.current) clearTimeout(miniTimerRef.current);
   }, []);
 
   useEffect(() => () => {
@@ -1407,7 +1429,7 @@ const App = () => {
     if (!prev) return;
     setCurrentTrack({ ...prev, albumId: currentAlbum.id });
     setProgress(0);setIsPlaying(true);
-    scheduleMinimize();
+    restartMinimizeTimer();
   };
 
   // Weiter-Knopf von Hand: bricht am Albumende bewusst um und fängt wieder
@@ -1424,7 +1446,7 @@ const App = () => {
     if (a && next && currentTrack && next.id === currentTrack.id) {
       try { a.currentTime = 0; } catch (e) {}
     }
-    scheduleMinimize();
+    restartMinimizeTimer();
   };
 
   // Ein Lied ist von allein zu Ende gelaufen.
@@ -1451,7 +1473,8 @@ const App = () => {
     const next = currentAlbum.tracks[idx + 1];
     setCurrentTrack({ ...next, albumId: currentAlbum.id });
     setProgress(0);setIsPlaying(true);
-    scheduleMinimize();
+    // Bewusst kein Ein-/Ausklappen: ein Liedwechsel von allein darf
+    // die Form des Players nicht verändern.
   };
 
   // Zielposition als Bruchteil 0..1 — kommt vom Klick oder vom Loslassen
@@ -1585,7 +1608,9 @@ const App = () => {
         progress={progress}
         currentTime={audioCur}
         duration={audioDur}
-        onSeekTo={handleSeekTo} />
+        onSeekTo={handleSeekTo}
+        onScrubStart={holdMinimize}
+        onScrubEnd={restartMinimizeTimer} />
 
           {/* Ganz normales <audio>: kein crossOrigin, kein Web Audio.
               Genau so darf iOS im Hintergrund weiterspielen. */}
