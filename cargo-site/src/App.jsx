@@ -749,6 +749,10 @@ const MusicGallery = ({ active, onActiveChange, onSelectAlbum, tweaks }) => {
 // ─── ALBUM DETAIL ───────────────────────────────────────────────────
 const AlbumDetail = ({ album, onBack, onPlay, currentTrack, isPlaying, variant = 'music' }) => {
   const isLibrary = variant === 'library';
+  // Gehört das gerade geladene Lied zu diesem Album? Danach richtet sich
+  // der große Play-/Pause-Knopf über der Trackliste.
+  const albumIsCurrent = !!currentTrack && currentTrack.albumId === album.id;
+  const albumIsPlaying = albumIsCurrent && isPlaying;
   const [descOpen, setDescOpen] = useState(false);
   const [descClosing, setDescClosing] = useState(false);
   const [descOrigin, setDescOrigin] = useState({ tx: '0px', ty: '0px' });
@@ -858,8 +862,20 @@ const AlbumDetail = ({ album, onBack, onPlay, currentTrack, isPlaying, variant =
           </div>
 
           <div className="detail-actions">
-            <button className="action-circle play" onClick={() => album.tracks[0] && onPlay(album.tracks[0], album)} title="Play album" aria-label="Play album">
-              <PlayThin />
+            {/* Großer Knopf über der Trackliste: Schalter für das ganze Album.
+                Läuft bereits ein Lied dieses Albums, pausiert er es und setzt
+                es an derselben Stelle wieder fort — er springt also nicht
+                zurück auf Lied 1. Nur wenn das Album gar nicht aktiv ist,
+                startet er es von vorne. */}
+            <button
+              className="action-circle play"
+              onClick={() => {
+                if (albumIsCurrent && currentTrack) onPlay(currentTrack, album);
+                else if (album.tracks[0]) onPlay(album.tracks[0], album);
+              }}
+              title={albumIsPlaying ? 'Pause' : 'Play album'}
+              aria-label={albumIsPlaying ? 'Pause' : 'Play album'}>
+              {albumIsPlaying ? <PauseThin /> : <PlayThin />}
             </button>
             {isLibrary ?
         <>
@@ -1004,11 +1020,47 @@ const timecode = (sec) => {
   return `00:${pad(m)}:${pad(s)}:${pad(f)}`;
 };
 
-const NowPlayingBar = ({ track, album, isPlaying, phase, minimized, tweaks, onToggle, onPrev, onNext, onClose, onExpand, progress, currentTime, duration, onSeek, canPrev = true }) => {
+const NowPlayingBar = ({ track, album, isPlaying, phase, minimized, tweaks, onToggle, onPrev, onNext, onClose, onExpand, progress, currentTime, duration, onSeekTo, canPrev = true }) => {
+  // Ziehen am Fortschrittsbalken. Während des Ziehens folgt die Anzeige
+  // sofort dem Finger bzw. der Maus, die Musik springt aber erst beim
+  // Loslassen — sonst stottert es bei jeder Bewegung.
+  // Hooks stehen bewusst VOR dem frühen return, sonst verletzt das die
+  // Regeln von React.
+  const barRef = useRef(null);
+  const [dragFrac, setDragFrac] = useState(null);
+
+  const fracFromEvent = (clientX) => {
+    const el = barRef.current;
+    if (!el) return 0;
+    const r = el.getBoundingClientRect();
+    if (!r.width) return 0;
+    return Math.max(0, Math.min(1, (clientX - r.left) / r.width));
+  };
+
+  const onPointerDown = (e) => {
+    // Pointer einfangen: dadurch laufen Bewegung und Loslassen auch dann
+    // hier auf, wenn man beim Ziehen über den Balken hinausgerät.
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch (err) {}
+    setDragFrac(fracFromEvent(e.clientX));
+  };
+  const onPointerMove = (e) => {
+    if (dragFrac === null) return;
+    setDragFrac(fracFromEvent(e.clientX));
+  };
+  const endDrag = (e) => {
+    if (dragFrac === null) return;
+    const f = fracFromEvent(e.clientX);
+    setDragFrac(null);
+    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch (err) {}
+    if (onSeekTo) onSeekTo(f);
+  };
+
   if (phase === 'closed' || !track) return null;
   // Echte Datei-Länge bevorzugen; nur bis Metadaten geladen sind auf die getippte Dauer zurückfallen.
   const total = duration > 0 ? duration : parseDur(track?.duration);
-  const cur = duration > 0 ? currentTime : total * progress;
+  // Beim Ziehen zeigt der Balken die Zielposition, nicht die laufende.
+  const shown = dragFrac !== null ? dragFrac : progress;
+  const cur = dragFrac !== null ? total * dragFrac : (duration > 0 ? currentTime : total * progress);
   return (
     <>
         <div
@@ -1040,10 +1092,16 @@ const NowPlayingBar = ({ track, album, isPlaying, phase, minimized, tweaks, onTo
               style={{ fontSize: (tweaks?.navFontSize ?? 38) * (tweaks?.navScale ?? 0.55) }}>
             CLOSE</button>
             </div>
-            <div className="np-progress" onClick={onSeek}>
+            <div
+              className={`np-progress ${dragFrac !== null ? 'np-dragging' : ''}`}
+              ref={barRef}
+              onPointerDown={onPointerDown}
+              onPointerMove={onPointerMove}
+              onPointerUp={endDrag}
+              onPointerCancel={endDrag}>
               <div className="np-bar">
-                <div className="np-bar-fill" style={{ width: `${progress * 100}%` }} />
-                <div className="np-bar-dot" style={{ left: `${progress * 100}%` }} />
+                <div className="np-bar-fill" style={{ width: `${shown * 100}%` }} />
+                <div className="np-bar-dot" style={{ left: `${shown * 100}%` }} />
               </div>
               <div className="np-times">
                 <span>{timecode(cur)}</span>
@@ -1396,13 +1454,16 @@ const App = () => {
     scheduleMinimize();
   };
 
-  const handleSeek = (e) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const frac = Math.max(0, Math.min(1, x / rect.width));
-    setProgress(frac);
+  // Zielposition als Bruchteil 0..1 — kommt vom Klick oder vom Loslassen
+  // nach dem Ziehen am Regler.
+  const handleSeekTo = (frac) => {
+    const f = Math.max(0, Math.min(1, frac || 0));
+    setProgress(f);
     const a = audioRef.current;
-    if (a && a.duration) a.currentTime = frac * a.duration;
+    if (a && a.duration && isFinite(a.duration)) {
+      try { a.currentTime = f * a.duration; } catch (e) {}
+      setAudioCur(a.currentTime);
+    }
   };
 
   // ── Media Session: Cover/Titel/Artist auf Sperrbildschirm & OS-Player ──
@@ -1524,7 +1585,7 @@ const App = () => {
         progress={progress}
         currentTime={audioCur}
         duration={audioDur}
-        onSeek={handleSeek} />
+        onSeekTo={handleSeekTo} />
 
           {/* Ganz normales <audio>: kein crossOrigin, kein Web Audio.
               Genau so darf iOS im Hintergrund weiterspielen. */}

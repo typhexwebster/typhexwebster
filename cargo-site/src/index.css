@@ -1642,7 +1642,18 @@
     .np-progress {
       margin-top: clamp(12px, 1.6vh, 18px);
       cursor: pointer;
+      /* Verhindert, dass das Handy beim Ziehen am Regler die Seite scrollt
+         oder den Text markiert. */
+      touch-action: none;
+      -webkit-user-select: none;
+      user-select: none;
     }
+    /* Während des Ziehens muss die weiche Nachlaufbewegung raus, sonst
+       hinkt der Balken dem Finger sichtbar hinterher. */
+    .np-progress.np-dragging { cursor: grabbing; }
+    .np-progress.np-dragging .np-bar-fill,
+    .np-progress.np-dragging .np-bar-dot { transition: none; }
+    .np-progress.np-dragging .np-bar-dot { width: 13px; height: 13px; }
     .np-bar {
       position: relative;
       height: 2px;
