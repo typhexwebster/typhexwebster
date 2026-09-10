@@ -981,7 +981,7 @@ const timecode = (sec) => {
   return `00:${pad(m)}:${pad(s)}:${pad(f)}`;
 };
 
-const NowPlayingBar = ({ track, album, isPlaying, phase, minimized, tweaks, onToggle, onPrev, onNext, onClose, onExpand, progress, currentTime, duration, onSeek }) => {
+const NowPlayingBar = ({ track, album, isPlaying, phase, minimized, tweaks, onToggle, onPrev, onNext, onClose, onExpand, progress, currentTime, duration, onSeek, canPrev = true }) => {
   if (phase === 'closed' || !track) return null;
   // Echte Datei-Länge bevorzugen; nur bis Metadaten geladen sind auf die getippte Dauer zurückfallen.
   const total = duration > 0 ? duration : parseDur(track?.duration);
@@ -1000,7 +1000,8 @@ const NowPlayingBar = ({ track, album, isPlaying, phase, minimized, tweaks, onTo
           <div className="np-inner">
             <div className="np-row">
               <div className="np-controls">
-                <button className="np-ctrl" onClick={onPrev} aria-label="Previous"><PrevDouble /></button>
+                <button className="np-ctrl" onClick={onPrev} aria-label="Previous"
+                  disabled={!canPrev} aria-disabled={!canPrev}><PrevDouble /></button>
                 <button className={`np-pp ${isPlaying ? '' : 'show-play'}`} onClick={onToggle} aria-label={isPlaying ? 'Pause' : 'Play'}>
                   {isPlaying ? <PauseThin /> : <PlayThin />}
                 </button>
@@ -1218,7 +1219,6 @@ const App = () => {
   // Progress is animated inside NowPlayingBar via requestAnimationFrame (smooth,
   // frame-rate independent, no per-frame React re-renders). App's `progress` is
   // only the seek/reset command; the bar reports track-end via onEnded.
-  const handleEnded = useCallback(() => {setIsPlaying(false);}, []);
 
   // Das Audio-Element für die EQ-Balken bekannt machen. Mehr passiert hier
   // nicht — kein Web Audio, kein crossOrigin. Genau deshalb darf iOS im
@@ -1311,19 +1311,58 @@ const App = () => {
     scheduleMinimize();
   };
 
+  // Position des laufenden Liedes innerhalb seines Albums.
+  // -1, solange nichts läuft.
+  const trackIndex = (currentAlbum && currentTrack)
+    ? currentAlbum.tracks.findIndex((t) => t.id === currentTrack.id)
+    : -1;
+  // Beim ersten Lied gibt es nichts davor — weder bei einem Album noch
+  // bei einer Single. Der Knopf wird dann gesperrt und ausgegraut.
+  const canPrev = trackIndex > 0;
+
   const handlePrev = () => {
-    if (!currentAlbum || !currentTrack) return;
-    const idx = currentAlbum.tracks.findIndex((t) => t.id === currentTrack.id);
-    const prev = currentAlbum.tracks[(idx - 1 + currentAlbum.tracks.length) % currentAlbum.tracks.length];
+    if (!currentAlbum || !currentTrack || !canPrev) return;
+    const prev = currentAlbum.tracks[trackIndex - 1];
+    if (!prev) return;
     setCurrentTrack({ ...prev, albumId: currentAlbum.id });
     setProgress(0);setIsPlaying(true);
     scheduleMinimize();
   };
 
+  // Weiter-Knopf von Hand: bricht am Albumende bewusst um und fängt wieder
+  // oben an. Bei einer Single mit nur einem Lied startet er es neu.
   const handleNext = () => {
     if (!currentAlbum || !currentTrack) return;
     const idx = currentAlbum.tracks.findIndex((t) => t.id === currentTrack.id);
     const next = currentAlbum.tracks[(idx + 1) % currentAlbum.tracks.length];
+    setCurrentTrack({ ...next, albumId: currentAlbum.id });
+    setProgress(0);setIsPlaying(true);
+    const a = audioRef.current;
+    // Gleicher Track (Single): das Element springt sonst nicht von selbst
+    // an den Anfang, weil sich die Quelle nicht ändert.
+    if (a && next && currentTrack && next.id === currentTrack.id) {
+      try { a.currentTime = 0; } catch (e) {}
+    }
+    scheduleMinimize();
+  };
+
+  // Ein Lied ist von allein zu Ende gelaufen.
+  // Innerhalb eines Albums geht es weiter — beim letzten Lied ist Schluss.
+  // Der Player bleibt offen und steht wieder am Anfang desselben Liedes,
+  // ein Druck auf Play spielt es also erneut.
+  const handleTrackEnd = () => {
+    if (!currentAlbum || !currentTrack) { setIsPlaying(false); return; }
+    const idx = currentAlbum.tracks.findIndex((t) => t.id === currentTrack.id);
+    const isLast = idx < 0 || idx >= currentAlbum.tracks.length - 1;
+    if (isLast) {
+      setIsPlaying(false);
+      setProgress(0);
+      setAudioCur(0);
+      const a = audioRef.current;
+      if (a) { try { a.currentTime = 0; } catch (e) {} }
+      return;
+    }
+    const next = currentAlbum.tracks[idx + 1];
     setCurrentTrack({ ...next, albumId: currentAlbum.id });
     setProgress(0);setIsPlaying(true);
     scheduleMinimize();
@@ -1356,14 +1395,17 @@ const App = () => {
       });
       navigator.mediaSession.setActionHandler('play', () => setIsPlaying(true));
       navigator.mediaSession.setActionHandler('pause', () => setIsPlaying(false));
-      navigator.mediaSession.setActionHandler('previoustrack', () => handlePrev());
+      // Beim ersten Lied den Zurück-Knopf abmelden: Sperrbildschirm und
+      // Kontrollzentrum blenden ihn dann von selbst aus — dasselbe
+      // Verhalten wie im Player auf der Seite.
+      navigator.mediaSession.setActionHandler('previoustrack', canPrev ? () => handlePrev() : null);
       navigator.mediaSession.setActionHandler('nexttrack', () => handleNext());
       navigator.mediaSession.setActionHandler('seekto', (d) => {
         const a = audioRef.current;
         if (a && d.seekTime != null) { a.currentTime = d.seekTime; }
       });
     } catch (e) {}
-  }, [currentTrack, currentAlbum]);
+  }, [currentTrack, currentAlbum, canPrev]);
 
   useEffect(() => {
     if ('mediaSession' in navigator) {
@@ -1447,6 +1489,7 @@ const App = () => {
         tweaks={tweaks}
         onToggle={() => setIsPlaying((p) => !p)}
         onPrev={handlePrev}
+        canPrev={canPrev}
         onNext={handleNext}
         onClose={handleClosePlayer}
         onExpand={scheduleMinimize}
@@ -1463,7 +1506,7 @@ const App = () => {
         playsInline
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={() => { const a = audioRef.current; if (a && isFinite(a.duration)) setAudioDur(a.duration); }}
-        onEnded={handleNext}
+        onEnded={handleTrackEnd}
         style={{ display: 'none' }} />
 
 

@@ -1561,6 +1561,13 @@
     }
     .np-ctrl:hover svg { opacity: 0.7; }
 
+    /* Zurück-Knopf beim ersten Lied: sichtbar abgeblendet und ohne Funktion.
+       Der :hover-Effekt darf dann nicht mehr greifen, sonst wirkt der Knopf
+       trotzdem anklickbar. */
+    .np-ctrl:disabled { cursor: default; }
+    .np-ctrl:disabled svg,
+    .np-ctrl:disabled:hover svg { opacity: 0.25; }
+
     .np-pp {
       background: transparent;
       border: 1.5px solid var(--red);
