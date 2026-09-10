@@ -40,6 +40,7 @@ const W3 = buildWeights(VIEW_3);
 let frames = null;   // Uint8Array, frames * BAND_COUNT
 let frameCount = 0;
 let fps = 20;
+let pending = false; // Daten werden gerade nachgeladen
 
 function fromBase64(b64) {
   const bin = atob(b64);
@@ -48,9 +49,18 @@ function fromBase64(b64) {
   return out;
 }
 
+// Wird aufgerufen, sobald das Nachladen beginnt. Solange das läuft, sollen
+// die Balken NICHT auf die CSS-Animation zurückfallen — sonst zucken sie
+// bei jedem Liedwechsel kurz auf.
+export function beginLoad() {
+  frames = null; frameCount = 0; pending = true;
+}
+
+export function isPending() { return pending; }
+
 // Datensatz eines Tracks laden. null/leer -> EQ fällt auf die CSS-Animation zurück.
 export function setTrack(json) {
-  frames = null; frameCount = 0;
+  frames = null; frameCount = 0; pending = false;
   if (!json) return false;
   try {
     const o = typeof json === 'string' ? JSON.parse(json) : json;
@@ -66,7 +76,7 @@ export function setTrack(json) {
   }
 }
 
-export function clear() { frames = null; frameCount = 0; }
+export function clear() { frames = null; frameCount = 0; pending = false; }
 
 export function hasData() { return !!frames && frameCount > 0; }
 

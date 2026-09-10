@@ -139,24 +139,47 @@ function useEqBars(refs, count, gains) {
   useEffect(() => {
     let raf;
     const smooth = new Array(count).fill(0);
-    let drivenByData = false;
+    let styled = false;   // schreiben wir gerade selbst in die Balken?
+    let atRest = false;   // Ruhezustand schon erreicht?
+
+    const write = () => {
+      for (let i = 0; i < count; i++) {
+        const b = refs[i].current;
+        if (b) { b.style.animation = 'none'; b.style.transform = `scaleY(${eqMap(smooth[i], gains[i])})`; }
+      }
+      styled = true;
+    };
+
     const tick = () => {
-      const live = eqData.hasData() && playbackEl && !playbackEl.paused;
-      if (live) {
+      const has = eqData.hasData();
+      const playing = playbackEl && !playbackEl.paused;
+
+      if (has && playing) {
         const lv = eqData.levelsAt(playbackEl.currentTime, count);
-        for (let i = 0; i < count; i++) {
-          smooth[i] += (lv[i] - smooth[i]) * EQ_FOLLOW;
-          const b = refs[i].current;
-          if (b) { b.style.animation = 'none'; b.style.transform = `scaleY(${eqMap(smooth[i], gains[i])})`; }
+        for (let i = 0; i < count; i++) smooth[i] += (lv[i] - smooth[i]) * EQ_FOLLOW;
+        write();
+        atRest = false;
+      } else if (has || eqData.isPending()) {
+        // Pausiert oder gerade am Nachladen: weich in den Ruhezustand
+        // fahren und dort stehen bleiben, statt auf zufälliger Höhe
+        // einzufrieren.
+        if (!atRest) {
+          let done = true;
+          for (let i = 0; i < count; i++) {
+            smooth[i] += (0 - smooth[i]) * EQ_FOLLOW;
+            if (smooth[i] > 0.003) done = false; else smooth[i] = 0;
+          }
+          write();
+          if (done) atRest = true;
         }
-        drivenByData = true;
-      } else if (drivenByData && !eqData.hasData()) {
+      } else if (styled) {
         // Track ohne Analyse: Balken wieder der CSS-Animation überlassen.
         for (let i = 0; i < count; i++) {
           const b = refs[i].current;
           if (b) { b.style.animation = ''; b.style.transform = ''; }
+          smooth[i] = 0;
         }
-        drivenByData = false;
+        styled = false; atRest = false;
       }
       raf = requestAnimationFrame(tick);
     };
@@ -1229,9 +1252,9 @@ const App = () => {
   // Tracks ohne Analyse liefern null — dann laufen die Balken auf der
   // CSS-Animation weiter, es geht also nichts kaputt.
   useEffect(() => {
-    eqData.clear();
     const id = currentTrack?.dbId;
-    if (!id) return;
+    if (!id) { eqData.clear(); return; }
+    eqData.beginLoad();
     let cancelled = false;
     loadTrackEq(id).then((json) => { if (!cancelled) eqData.setTrack(json); });
     return () => { cancelled = true; };
@@ -1347,19 +1370,24 @@ const App = () => {
   };
 
   // Ein Lied ist von allein zu Ende gelaufen.
-  // Innerhalb eines Albums geht es weiter — beim letzten Lied ist Schluss.
-  // Der Player bleibt offen und steht wieder am Anfang desselben Liedes,
-  // ein Druck auf Play spielt es also erneut.
+  // Innerhalb eines Albums geht es weiter — nach dem letzten Lied stellt
+  // sich der Player auf das erste Lied zurück, startet es aber NICHT.
+  // Es steht dann pausiert auf 0:00 bereit. Die Form des Players (offen
+  // oder eingeklappt) bleibt dabei unverändert.
   const handleTrackEnd = () => {
     if (!currentAlbum || !currentTrack) { setIsPlaying(false); return; }
     const idx = currentAlbum.tracks.findIndex((t) => t.id === currentTrack.id);
     const isLast = idx < 0 || idx >= currentAlbum.tracks.length - 1;
     if (isLast) {
+      const first = currentAlbum.tracks[0];
       setIsPlaying(false);
       setProgress(0);
       setAudioCur(0);
+      // Bei einer Single ist das erste Lied dasselbe — dann ändert sich
+      // die Quelle nicht, und die Zeit muss von Hand zurückgesetzt werden.
       const a = audioRef.current;
       if (a) { try { a.currentTime = 0; } catch (e) {} }
+      if (first) setCurrentTrack({ ...first, albumId: currentAlbum.id });
       return;
     }
     const next = currentAlbum.tracks[idx + 1];
