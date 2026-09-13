@@ -1918,6 +1918,22 @@
     }
     .redownload-btn:hover { background: var(--red); color: #000; }
 
+    /* In der Aktionszeile der Library steht der Knopf zwischen zwei
+       Kreisen (44 × 44, Linie 1,5). Damit er sich dort einfügt, bekommt er
+       exakt dieselbe Höhe und Linienstärke — bisher ergab sich seine Höhe
+       aus Schrift plus Innenabstand und lag je nach Bildschirm bei 46 bis
+       54 Pixeln. Der Knopf im Re-Download-Fenster ist bewusst nicht
+       betroffen, der soll dort groß bleiben. */
+    .redownload-wrap .redownload-btn {
+      height: 44px;
+      border-width: 1.5px;
+      padding: 0 32px;
+      font-size: clamp(13px, 2vw, 17px);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
     /* info modal — lighter panel + light body text */
     .info-modal { background: #1c1b1a; }
     .info-modal-rows {
