@@ -625,6 +625,41 @@
       }
     }
 
+    /* ── DANKESFENSTER NACH DEM DOWNLOAD ──
+       Nutzt dieselbe Zoom-Mechanik wie die Beschreibung, wächst also aus
+       dem Knopf heraus, der gedrückt wurde. */
+    .thanks-modal {
+      background: #1c1c1c;
+      max-width: 560px;
+      padding: 56px 44px 48px;
+      text-align: center;
+    }
+    .thanks-title {
+      font-family: var(--mono);
+      font-size: clamp(14px, 3.4vw, 17px);
+      letter-spacing: 0.08em;
+      color: var(--red);
+      margin-bottom: 14px;
+    }
+    .thanks-text {
+      font-family: var(--mono);
+      font-size: clamp(11px, 3vw, 14px);
+      line-height: 1.9;
+      letter-spacing: 0.04em;
+      color: var(--white);
+    }
+    .thanks-link {
+      background: none;
+      border: 0;
+      padding: 0;
+      font: inherit;
+      color: var(--red);
+      text-decoration: underline;
+      text-underline-offset: 3px;
+      cursor: pointer;
+    }
+    .thanks-link:hover { color: var(--white); }
+
     .desc-modal-overlay.closing {
       animation: descOverlayOut 0.32s ease-in forwards;
     }
@@ -727,6 +762,40 @@
 
     .dl-circle:hover { background: var(--red); }
     .dl-circle:hover svg { stroke: #000; }
+
+    /* ── DOWNLOAD-ZUSTÄNDE ──
+       Pfeil -> Ring bzw. drehender Bogen -> Haken. Fertige Downloads sind
+       bewusst passiv: kein Zeigefinger, keine Hover-Reaktion. */
+    .dl-circle:disabled,
+    .track-dl:disabled { cursor: default; }
+    .dl-circle.is-done:hover,
+    .dl-circle.is-busy:hover { background: transparent; }
+    .dl-circle.is-done:hover svg,
+    .dl-circle.is-busy:hover svg { stroke: var(--red); }
+
+    /* Der große Knopf wird beim Laden und beim Haken etwas luftiger,
+       damit Bogen und Haken nicht am Rand kleben. */
+    .dl-circle.is-busy svg { width: 22px; height: 22px; }
+    .dl-circle.is-done svg { width: 24px; height: 24px; stroke-width: 2; }
+    .track-dl.is-done svg { stroke-width: 2; }
+
+    /* Fortschrittsring eines einzelnen Tracks */
+    .dl-ring { transform: rotate(-90deg); }          /* Start oben statt rechts */
+    .dl-ring-track { stroke: rgba(200, 64, 42, 0.25); stroke-width: 2; }
+    .dl-ring-value {
+      stroke: var(--red);
+      stroke-width: 2;
+      transition: stroke-dashoffset 0.15s linear;
+    }
+
+    /* Drehender Pfeilbogen des großen Knopfes — ohne Fortschritt, der
+       steht ja bei den einzelnen Tracks. */
+    .dl-spin { animation: dlSpin 1.1s linear infinite; transform-origin: 50% 50%; }
+    @keyframes dlSpin { to { transform: rotate(360deg); } }
+
+    @media (prefers-reduced-motion: reduce) {
+      .dl-spin { animation-duration: 2.4s; }
+    }
 
     .dl-circle svg {
       width: 18px;

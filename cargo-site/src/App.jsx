@@ -4,12 +4,23 @@ import {
   useTweaks, TweaksPanel, TweakSection, TweakRow, TweakSlider, TweakToggle,
   TweakRadio, TweakSelect, TweakText, TweakNumber, TweakColor, TweakButton
 } from './tweaks-panel.jsx';
-import { ALBUMS, LIBRARY_IDS, COVER_IMAGES, GALLERY, SITE, loadTrackEq } from './content.js';
+// LIBRARY_IDS (das Admin-Häkchen) wird bewusst nicht mehr importiert:
+// Die Library speist sich jetzt ausschließlich aus den Downloads des
+// Besuchers. Das Häkchen im Admin bleibt vorerst stehen, wirkt aber nicht.
+import { ALBUMS, COVER_IMAGES, GALLERY, SITE, loadTrackEq } from './content.js';
 import * as eqData from './eqData.js';
+import * as downloads from './downloads.js';
+import { fetchWithProgress, saveBlob, makeZip, safeFilename, extensionFromUrl } from './fileTransfer.js';
 
 
 
-const { useState, useEffect, useRef, useCallback } = React;
+const { useState, useEffect, useRef, useCallback, useSyncExternalStore } = React;
+
+// Bequemer Zugriff auf den Download-Stand. Jede Komponente, die das hier
+// benutzt, rendert automatisch neu, sobald ein Download fertig wird.
+function useDownloads() {
+  return useSyncExternalStore(downloads.subscribe, downloads.getSnapshot, downloads.getSnapshot);
+}
 
 // Das laufende <audio>-Element auf Modulebene, damit die EQ-Balken die
 // Wiedergabezeit pro Bild direkt ablesen können, ohne dass dafür jedes
@@ -49,6 +60,42 @@ const CargoMarkIcon = () =>
         <rect x="18" y="16" width="36" height="24" rx="6" stroke="var(--red)" strokeWidth="1.8" fill="none" />
       </svg>;
 
+
+// Häkchen für fertige Downloads.
+const CheckIcon = () =>
+<svg viewBox="0 0 24 24" fill="none" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M4 12.5l5.5 5.5L20 6.5" />
+      </svg>;
+
+// Ring, der sich im Uhrzeigersinn füllt — zeigt den echten Ladefortschritt
+// eines einzelnen Tracks. Der graue Ring dahinter bleibt immer sichtbar,
+// damit der Knopf nicht leer wirkt, solange noch nichts geladen ist.
+const ProgressRing = ({ value = 0 }) => {
+  const r = 9.25;
+  const c = 2 * Math.PI * r;
+  const v = Math.max(0, Math.min(1, value || 0));
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className="dl-ring">
+          <circle cx="12" cy="12" r={r} className="dl-ring-track" />
+          <circle
+        cx="12" cy="12" r={r}
+        className="dl-ring-value"
+        strokeDasharray={c}
+        strokeDashoffset={c * (1 - v)}
+        strokeLinecap="round" />
+        </svg>);
+
+
+};
+
+// Sich drehender Pfeilbogen für den großen Knopf. Bewusst ohne
+// Fortschrittsanzeige — den echten Fortschritt sieht man an den
+// einzelnen Tracks darunter.
+const SpinnerArc = () =>
+<svg viewBox="0 0 24 24" fill="none" className="dl-spin">
+        <path d="M12 2.75a9.25 9.25 0 1 0 9.25 9.25" strokeLinecap="round" />
+        <path d="M17.4 11.1l3.85 1.9 1.5-3.95" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>;
 
 const DownloadIcon = () =>
 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -748,18 +795,32 @@ const MusicGallery = ({ active, onActiveChange, onSelectAlbum, tweaks }) => {
 };
 
 // ─── ALBUM DETAIL ───────────────────────────────────────────────────
-const AlbumDetail = ({ album, onBack, onPlay, currentTrack, isPlaying, variant = 'music' }) => {
+const AlbumDetail = ({ album, onBack, onPlay, currentTrack, isPlaying, variant = 'music', onGoLibrary }) => {
   const isLibrary = variant === 'library';
   // Gehört das gerade geladene Lied zu diesem Album? Danach richtet sich
   // der große Play-/Pause-Knopf über der Trackliste.
   const albumIsCurrent = !!currentTrack && currentTrack.albumId === album.id;
   const albumIsPlaying = albumIsCurrent && isPlaying;
+
+  // In der Library nur die Tracks zeigen, die man tatsächlich geladen hat —
+  // mit ihren Originalnummern. Track 7 bleibt Track 7, es wird nichts neu
+  // durchnummeriert.
+  const visibleTracks = isLibrary ?
+  album.tracks.filter((t) => downloads.isDownloaded(album.id, t.id)) :
+  album.tracks;
   const [descOpen, setDescOpen] = useState(false);
   const [descClosing, setDescClosing] = useState(false);
   const [descOrigin, setDescOrigin] = useState({ tx: '0px', ty: '0px' });
   const [infoOpen, setInfoOpen] = useState(false);
   const [infoClosing, setInfoClosing] = useState(false);
   const [infoOrigin, setInfoOrigin] = useState({ tx: '0px', ty: '0px' });
+  const [thanksOpen, setThanksOpen] = useState(false);
+  const [thanksClosing, setThanksClosing] = useState(false);
+  const [thanksOrigin, setThanksOrigin] = useState({ tx: '0px', ty: '0px' });
+
+  // Neu rendern, sobald sich der Download-Stand ändert.
+  useDownloads();
+  const albumDone = downloads.albumIsComplete(album);
 
   const openDesc = (e) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -805,38 +866,104 @@ const AlbumDetail = ({ album, onBack, onPlay, currentTrack, isPlaying, variant =
     }, 320);
   };
 
+  const closeThanks = () => {
+    setThanksClosing(true);
+    setTimeout(() => {
+      setThanksOpen(false);
+      setThanksClosing(false);
+    }, 320);
+  };
+
+  // „library“ im Fenstertext führt direkt dorthin.
+  const goToLibrary = () => {
+    setThanksOpen(false);
+    setThanksClosing(false);
+    if (onGoLibrary) onGoLibrary();
+  };
+
   const handleRedownload = () => {
 
     /* no function for now */};
 
-  const handleDownloadAll = () => {
-    alert('Download all: Dateien werden bereitgestellt sobald MP3s hochgeladen sind.');
+  // ── Downloads ──────────────────────────────────────────────────────
+  // Zustand je Track: nichts | { progress } während des Ladens.
+  // Was fertig ist, steht dauerhaft im downloads-Modul und übersteht das
+  // Neuladen der Seite.
+  const [busy, setBusy] = useState({});          // trackId -> 0..1
+  const [allBusy, setAllBusy] = useState(false); // großer Knopf dreht sich
+
+  const setTrackProgress = (id, v) =>
+  setBusy((p) => ({ ...p, [id]: v }));
+
+  const clearTrack = (id) =>
+  setBusy((p) => { const n = { ...p };delete n[id];return n; });
+
+  const trackFilename = (track) =>
+  `${String(track.id).padStart(2, '0')} ${safeFilename(track.title, 'track')}.${extensionFromUrl(track.file)}`;
+
+  // Das Dankesfenster wächst aus dem Knopf heraus, der gedrückt wurde.
+  const openThanks = (el) => {
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    setThanksOrigin({
+      tx: `${rect.left + rect.width / 2 - window.innerWidth / 2}px`,
+      ty: `${rect.top + rect.height / 2 - window.innerHeight / 2}px`
+    });
+    setThanksClosing(false);
+    setThanksOpen(true);
   };
 
-  const handleDownloadTrack = async (track) => {
-    if (!track.file) {
-      alert(`Download: "${track.title}" — Audiodatei noch nicht hochgeladen.`);
-      return;
-    }
-    const ext = (track.file.split('.').pop() || 'm4a').split('?')[0].slice(0, 4);
-    const filename = `${track.title}.${ext}`;
+  const handleDownloadTrack = async (track, el) => {
+    if (!track.file || busy[track.id] !== undefined) return;
+    if (downloads.isDownloaded(album.id, track.id)) return; // fertig = passiv
+    setTrackProgress(track.id, 0);
     try {
-      // Blob-Download erzwingt das Speichern (auch über Domain-Grenzen).
-      const res = await fetch(track.file);
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 4000);
+      const bytes = await fetchWithProgress(track.file, (p) =>
+      setTrackProgress(track.id, p === null ? 0.5 : p)
+      );
+      saveBlob(new Blob([bytes], { type: 'audio/mp4' }), trackFilename(track));
+      const isNewForLibrary = downloads.markDownloaded(album.id, track.id);
+      if (isNewForLibrary) openThanks(el);
     } catch (e) {
-      // Fallback: direkter Link (öffnet ggf. in neuem Tab)
-      const a = document.createElement('a');
-      a.href = track.file;
-      a.download = filename;
-      a.target = '_blank';
-      a.click();
+      console.warn('[download]', e && e.message);
+    } finally {
+      clearTrack(track.id);
+    }
+  };
+
+  // Alles herunterladen: nacheinander laden, dabei je Track den echten
+  // Fortschritt zeigen, am Ende alles als ein Archiv speichern.
+  // Tracks ohne hinterlegte Datei werden übersprungen.
+  const handleDownloadAll = async (el) => {
+    if (allBusy) return;
+    const list = album.tracks.filter((t) => t.file);
+    if (!list.length) return;
+    setAllBusy(true);
+    const files = [];
+    let isNewForLibrary = false;
+    try {
+      for (const t of list) {
+        if (downloads.isDownloaded(album.id, t.id)) continue;
+        setTrackProgress(t.id, 0);
+        try {
+          const bytes = await fetchWithProgress(t.file, (p) =>
+          setTrackProgress(t.id, p === null ? 0.5 : p)
+          );
+          files.push({ name: trackFilename(t), bytes });
+          if (downloads.markDownloaded(album.id, t.id)) isNewForLibrary = true;
+        } catch (e) {
+          console.warn('[download]', t.title, e && e.message);
+        } finally {
+          clearTrack(t.id);
+        }
+      }
+      if (files.length) {
+        const zipName = `${safeFilename(album.title, 'release')}.zip`;
+        saveBlob(makeZip(files), zipName);
+      }
+      if (isNewForLibrary) openThanks(el);
+    } finally {
+      setAllBusy(false);
     }
   };
 
@@ -872,7 +999,7 @@ const AlbumDetail = ({ album, onBack, onPlay, currentTrack, isPlaying, variant =
               className={`action-circle play ${albumIsPlaying ? 'is-pause' : ''}`}
               onClick={() => {
                 if (albumIsCurrent && currentTrack) onPlay(currentTrack, album);
-                else if (album.tracks[0]) onPlay(album.tracks[0], album);
+                else if (visibleTracks[0]) onPlay(visibleTracks[0], album);
               }}
               title={albumIsPlaying ? 'Pause' : 'Play album'}
               aria-label={albumIsPlaying ? 'Pause' : 'Play album'}>
@@ -888,14 +1015,20 @@ const AlbumDetail = ({ album, onBack, onPlay, currentTrack, isPlaying, variant =
               </button>
             </> :
 
-        <button className="dl-circle" onClick={handleDownloadAll} title="Download all">
-              <svg viewBox="0 0 24 24"><path d="M12 3v13M7 11l5 5 5-5M4 20h16" /></svg>
+        <button
+              className={`dl-circle${allBusy ? ' is-busy' : ''}${albumDone ? ' is-done' : ''}`}
+              onClick={(e) => handleDownloadAll(e.currentTarget)}
+              disabled={allBusy || albumDone}
+              title={albumDone ? 'Already in your library' : 'Download all'}
+              aria-label={albumDone ? 'Already in your library' : 'Download all'}>
+              {albumDone ? <CheckIcon /> : allBusy ? <SpinnerArc /> :
+          <svg viewBox="0 0 24 24"><path d="M12 3v13M7 11l5 5 5-5M4 20h16" /></svg>}
             </button>
         }
           </div>
 
           <div className="tracklist">
-            {album.tracks.map((track) => {
+            {visibleTracks.map((track) => {
           const isThisPlaying = currentTrack?.id === track.id && currentTrack?.albumId === album.id && isPlaying;
           const isThisLoaded = currentTrack?.id === track.id && currentTrack?.albumId === album.id;
           return (
@@ -910,9 +1043,22 @@ const AlbumDetail = ({ album, onBack, onPlay, currentTrack, isPlaying, variant =
                   <div style={{ fontFamily: 'monospace', fontSize: 10, color: '#444', marginRight: 8 }}>{track.duration}</div>
                   {!isLibrary &&
               <div className="track-dl-col" style={{ width: 44, alignItems: 'center' }}>
-                    <button className="track-dl" onClick={(e) => {e.stopPropagation();handleDownloadTrack(track);}}>
-                      <svg viewBox="0 0 24 24"><path d="M12 3v13M7 11l5 5 5-5M4 20h16" /></svg>
-                    </button>
+                    {(() => {
+                  const done = downloads.isDownloaded(album.id, track.id);
+                  const loading = busy[track.id] !== undefined;
+                  return (
+                    <button
+                      className={`track-dl${loading ? ' is-busy' : ''}${done ? ' is-done' : ''}`}
+                      disabled={done || loading || !track.file}
+                      title={done ? 'Already in your library' : 'Download'}
+                      aria-label={done ? 'Already in your library' : 'Download'}
+                      onClick={(e) => {e.stopPropagation();handleDownloadTrack(track, e.currentTarget);}}>
+                          {done ? <CheckIcon /> :
+                      loading ? <ProgressRing value={busy[track.id]} /> :
+                      <svg viewBox="0 0 24 24"><path d="M12 3v13M7 11l5 5 5-5M4 20h16" /></svg>}
+                        </button>);
+
+                })()}
                   </div>
               }
                 </div>);
@@ -923,7 +1069,7 @@ const AlbumDetail = ({ album, onBack, onPlay, currentTrack, isPlaying, variant =
           {/* Copyright kommt aus der Albumbearbeitung im Admin.
               Ist das Feld leer, erscheint auch kein Trennpunkt. */}
           <div className="detail-meta">
-            {album.totalTracks} Songs, {album.duration}{album.copyright ? ' · ' + album.copyright : ''}
+            {isLibrary ? visibleTracks.length : album.totalTracks} Songs, {album.duration}{album.copyright ? ' · ' + album.copyright : ''}
           </div>
 
           {descOpen && ReactDOM.createPortal(
@@ -977,13 +1123,46 @@ const AlbumDetail = ({ album, onBack, onPlay, currentTrack, isPlaying, variant =
             </div>,
         document.body
       )}
+
+          {/* Dankesfenster — erscheint, wenn dieses Release neu in die
+              Library gekommen ist, und wächst aus dem gedrückten Knopf. */}
+          {thanksOpen && ReactDOM.createPortal(
+        <div
+          className={`desc-modal-overlay${thanksClosing ? ' closing' : ''}`}
+          onClick={closeThanks}>
+
+              <div
+            className="desc-modal thanks-modal"
+            onClick={(e) => e.stopPropagation()}
+            style={{ '--tx': thanksOrigin.tx, '--ty': thanksOrigin.ty }}>
+
+                <button
+              className="desc-modal-close"
+              onClick={closeThanks}
+              aria-label="Close">
+
+                  <svg viewBox="0 0 24 24"><path d="M5 5l14 14M19 5L5 19" /></svg>
+                </button>
+                <div className="thanks-title">thank you!</div>
+                <div className="thanks-text">
+                  The release is now also in your{' '}
+                  <button className="thanks-link" onClick={goToLibrary}>library</button>
+                  {' '}and available for re-downloads.
+                </div>
+              </div>
+            </div>,
+        document.body
+      )}
         </div>);
 
 };
 
 // ─── LIBRARY PAGE ───────────────────────────────────────────────────
 const LibraryPage = ({ onSelectAlbum }) => {
-  const albums = ALBUMS.filter((a) => LIBRARY_IDS.includes(a.id));
+  // Die Library zeigt ausschließlich, was dieser Besucher heruntergeladen
+  // hat — ein einziger geladener Track genügt, damit das Release erscheint.
+  useDownloads();
+  const albums = ALBUMS.filter((a) => downloads.albumHasDownloads(a.id));
   // Das Logo leuchtet erst, wenn man es antippt — und beim nächsten Aufruf
   // der Seite wieder von vorne, es wird bewusst nichts gemerkt.
   const [lit, setLit] = useState(false);
@@ -1267,6 +1446,9 @@ const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
 } /*EDITMODE-END*/;
 
 const App = () => {
+  // Neu rendern, sobald sich der Download-Stand ändert — davon hängt
+  // unter anderem ab, ob die Library-Seite gescrollt werden darf.
+  useDownloads();
   const [screen, setScreen] = useState('landing');
   const [prevScreen, setPrevScreen] = useState('landing');
   const [navOpen, setNavOpen] = useState(false);
@@ -1549,7 +1731,7 @@ const App = () => {
   const hamburgerOpen = screen === 'hub';
   // Leere Library-Übersicht (nicht die Detailansicht eines Albums) —
   // steuert unten die Scrollsperre.
-  const libraryEmpty = !selectedAlbum && ALBUMS.filter((a) => LIBRARY_IDS.includes(a.id)).length === 0;
+  const libraryEmpty = !selectedAlbum && !ALBUMS.some((a) => downloads.albumHasDownloads(a.id));
 
   const handleMenuOpen = () => {
     if (screen === 'hub') {
@@ -1586,7 +1768,8 @@ const App = () => {
           onBack={() => setSelectedAlbum(null)}
           onPlay={handlePlay}
           currentTrack={currentTrack}
-          isPlaying={isPlaying} />
+          isPlaying={isPlaying}
+          onGoLibrary={() => { setSelectedAlbum(null); navigate('library'); }} />
 
         }
             </div>
