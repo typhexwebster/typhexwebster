@@ -1362,7 +1362,7 @@ const LibraryPage = ({ onSelectAlbum }) => {
               <div className="library-empty-sub">Your downloaded music will appear here.<br />You can re-download your files anytime.</div>
             </div> :
 
-      <div className={`library-grid${albums.length === 1 ? ' library-grid--single' : ''}`}>
+      <div className="library-grid">
               {albums.map((a) =>
         <div key={a.id} className="library-card" onClick={() => onSelectAlbum(a)}>
                   <CoverPlaceholder album={a} size={420} />
