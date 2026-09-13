@@ -247,7 +247,8 @@ const CoverPlaceholder = ({ album, size = 280 }) => {
   const [c1, c2, c3] = colors[album.id] || ['#333', '#555', '#111'];
   return (
     <div style={{
-      width: size, height: size,
+      // Wie beim echten Cover: nie breiter als die Spalte, immer quadratisch.
+      width: size, maxWidth: '100%', aspectRatio: '1 / 1', height: 'auto',
       background: `radial-gradient(circle at 40% 40%, ${c1}, ${c3})`,
       display: 'flex', flexDirection: 'column',
       alignItems: 'center', justifyContent: 'center',

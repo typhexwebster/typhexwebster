@@ -1782,7 +1782,12 @@
     }
     .library-grid {
       display: grid;
-      grid-template-columns: repeat(2, 1fr);
+      /* minmax(0, 1fr) statt 1fr: Ohne die 0 darf eine Spalte nicht
+         schmaler werden als ihr längster unumbrochener Text. Ein langer
+         Artist-Name hat die rechte Spalte sonst breiter gedrückt als die
+         linke — auf dem Handy deutlich sichtbar, am Laptop nicht, weil
+         dort genug Platz ist. */
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 36px 32px;
     }
     /* single downloaded album → centre the lone cover */
@@ -1790,7 +1795,10 @@
       grid-template-columns: minmax(0, 420px);
       justify-content: center;
     }
-    .library-card { cursor: pointer; }
+    /* Dasselbe noch einmal für die Karte selbst: Ein Rasterfeld ist von
+       Haus aus mindestens so breit wie sein Inhalt. Erst diese Null
+       erlaubt dem Titel, mit … abzuschneiden statt die Spalte zu dehnen. */
+    .library-card { cursor: pointer; min-width: 0; }
     .library-card .protected-cover {
       width: 100% !important;
       height: auto;
