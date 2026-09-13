@@ -987,8 +987,11 @@ const LibraryPage = ({ onSelectAlbum }) => {
   // Das Logo leuchtet erst, wenn man es antippt — und beim nächsten Aufruf
   // der Seite wieder von vorne, es wird bewusst nichts gemerkt.
   const [lit, setLit] = useState(false);
+  // Ist nichts heruntergeladen, passt die Seite auf einen Schirm — dann
+  // wird auch nicht gescrollt, egal wie das Fenster steht.
+  const isEmpty = albums.length === 0;
   return (
-    <div className="library-page page-enter">
+    <div className={`library-page page-enter ${isEmpty ? 'is-empty' : ''}`}>
           <h1 className="library-title">
             <button
               type="button"
