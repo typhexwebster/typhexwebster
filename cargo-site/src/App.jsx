@@ -984,9 +984,27 @@ const AlbumDetail = ({ album, onBack, onPlay, currentTrack, isPlaying, variant =
 // ─── LIBRARY PAGE ───────────────────────────────────────────────────
 const LibraryPage = ({ onSelectAlbum }) => {
   const albums = ALBUMS.filter((a) => LIBRARY_IDS.includes(a.id));
+  // Das Logo leuchtet erst, wenn man es antippt — und beim nächsten Aufruf
+  // der Seite wieder von vorne, es wird bewusst nichts gemerkt.
+  const [lit, setLit] = useState(false);
   return (
     <div className="library-page page-enter">
-          <h1 className="library-title">YOUR LIBRARY</h1>
+          <h1 className="library-title">
+            <button
+              type="button"
+              className="library-logo-btn"
+              onClick={() => setLit((v) => !v)}
+              aria-pressed={lit}
+              aria-label={lit ? 'Turn the library sign off' : 'Turn the library sign on'}>
+              <img
+                className={`library-logo ${lit ? 'is-lit' : ''}`}
+                src="/uploads/library-logo.webp"
+                alt="Library"
+                draggable={false}
+                onDragStart={(e) => e.preventDefault()}
+                onContextMenu={(e) => e.preventDefault()} />
+            </button>
+          </h1>
           {albums.length === 0 ?
       <div className="library-empty">
               <div className="library-empty-title">your library is empty</div>

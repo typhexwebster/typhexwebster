@@ -1772,13 +1772,68 @@
     }
     .library-title {
       text-align: center;
-      font-family: var(--mono);
-      font-weight: 400;
-      font-size: clamp(30px, 6vw, 46px);
-      letter-spacing: 0.14em;
-      color: var(--red);
-      text-transform: uppercase;
       margin: 16px 0 60px;
+      line-height: 0;
+    }
+
+    /* ── LIBRARY-SCHRIFTZUG ──
+       Das Logo ist freigestellt, der Glow entsteht deshalb per drop-shadow
+       und folgt exakt den Buchstabenkanten. Ein Klick schaltet ihn an und
+       aus; beim Anschalten zündet er kurz wie eine Neonröhre und brennt
+       danach ruhig weiter. */
+    .library-logo-btn {
+      background: none;
+      border: 0;
+      padding: 0;
+      margin: 0 auto;
+      display: block;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .library-logo {
+      display: block;
+      width: min(74vw, 500px);
+      height: auto;
+      user-select: none;
+      -webkit-user-drag: none;
+      /* Ausgangszustand: kein Leuchten. Der Übergang greift auch dann,
+         wenn die Animation wieder entfernt wird — dadurch blendet das
+         Leuchten beim Ausschalten weich ab. */
+      filter: drop-shadow(0 0 0 rgba(255, 190, 120, 0));
+      transition: filter 0.5s ease;
+    }
+    .library-logo.is-lit {
+      animation:
+        libIgnite 1.1s steps(1, end) forwards,
+        libBreathe 6s ease-in-out 1.1s infinite;
+    }
+
+    /* Zünden: ein paar unregelmäßige Zuckungen, dann steht das Licht. */
+    @keyframes libIgnite {
+      0%   { filter: drop-shadow(0 0 0 rgba(255,190,120,0)) brightness(1); }
+      6%   { filter: drop-shadow(0 0 14px rgba(255,214,170,0.85)) drop-shadow(0 0 34px rgba(255,120,30,0.5)) brightness(1.22); }
+      11%  { filter: drop-shadow(0 0 0 rgba(255,190,120,0)) brightness(1); }
+      18%  { filter: drop-shadow(0 0 10px rgba(255,214,170,0.7)) drop-shadow(0 0 26px rgba(255,120,30,0.4)) brightness(1.15); }
+      24%  { filter: drop-shadow(0 0 2px rgba(255,190,120,0.15)) brightness(1.02); }
+      33%  { filter: drop-shadow(0 0 16px rgba(255,214,170,0.9)) drop-shadow(0 0 40px rgba(255,120,30,0.55)) brightness(1.25); }
+      41%  { filter: drop-shadow(0 0 6px rgba(255,190,120,0.4)) brightness(1.06); }
+      52%  { filter: drop-shadow(0 0 15px rgba(255,214,170,0.85)) drop-shadow(0 0 36px rgba(255,120,30,0.5)) brightness(1.2); }
+      60%  { filter: drop-shadow(0 0 9px rgba(255,200,140,0.6)) brightness(1.1); }
+      100% { filter: drop-shadow(0 0 13px rgba(255,214,170,0.8)) drop-shadow(0 0 32px rgba(255,120,30,0.45)) brightness(1.16); }
+    }
+
+    /* Danach nur noch ein sehr leichtes Atmen. */
+    @keyframes libBreathe {
+      0%, 100% { filter: drop-shadow(0 0 13px rgba(255,214,170,0.8)) drop-shadow(0 0 32px rgba(255,120,30,0.45)) brightness(1.16); }
+      50%      { filter: drop-shadow(0 0 17px rgba(255,214,170,0.9)) drop-shadow(0 0 42px rgba(255,120,30,0.55)) brightness(1.2); }
+    }
+
+    /* Wer Bewegung im System abgestellt hat, bekommt das Licht ohne Zucken. */
+    @media (prefers-reduced-motion: reduce) {
+      .library-logo.is-lit {
+        animation: none;
+        filter: drop-shadow(0 0 13px rgba(255,214,170,0.8)) drop-shadow(0 0 32px rgba(255,120,30,0.45)) brightness(1.16);
+      }
     }
     .library-grid {
       display: grid;
