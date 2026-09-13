@@ -1964,7 +1964,10 @@
     }
     .library-title {
       text-align: center;
-      margin: 0 0 clamp(16px, 3vh, 36px);
+      /* Abstand zu den Covern darunter. Der leere Zustand ist davon nicht
+         betroffen: Dessen eigener oberer Abstand ist größer und verschluckt
+         diesen hier (benachbarte Ränder fallen zusammen). */
+      margin: 0 0 clamp(40px, 6vh, 72px);
       line-height: 0;
     }
 
@@ -2116,6 +2119,9 @@
       .library-page { padding-top: clamp(16px, 4vh, 40px); }
       .library-logo { max-height: 22vh; }
       .library-empty { margin-top: clamp(20px, 6vh, 60px); }
+      /* Im Querformat bleibt es eng, sonst passt der leere Zustand nicht
+         mehr ohne Scrollen auf den Schirm. */
+      .library-title { margin-bottom: clamp(18px, 5vh, 36px); }
     }
 
     /* ── MINIMIZED PLAYER (circle + live EQ) ── */
