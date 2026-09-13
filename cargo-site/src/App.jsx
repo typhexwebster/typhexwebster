@@ -987,11 +987,8 @@ const LibraryPage = ({ onSelectAlbum }) => {
   // Das Logo leuchtet erst, wenn man es antippt — und beim nächsten Aufruf
   // der Seite wieder von vorne, es wird bewusst nichts gemerkt.
   const [lit, setLit] = useState(false);
-  // Ist nichts heruntergeladen, passt die Seite auf einen Schirm — dann
-  // wird auch nicht gescrollt, egal wie das Fenster steht.
-  const isEmpty = albums.length === 0;
   return (
-    <div className={`library-page page-enter ${isEmpty ? 'is-empty' : ''}`}>
+    <div className="library-page page-enter">
           <h1 className="library-title">
             <button
               type="button"
@@ -1550,6 +1547,9 @@ const App = () => {
   const showHeader = screen !== 'landing';
   const showPlayer = currentTrack !== null;
   const hamburgerOpen = screen === 'hub';
+  // Leere Library-Übersicht (nicht die Detailansicht eines Albums) —
+  // steuert unten die Scrollsperre.
+  const libraryEmpty = !selectedAlbum && ALBUMS.filter((a) => LIBRARY_IDS.includes(a.id)).length === 0;
 
   const handleMenuOpen = () => {
     if (screen === 'hub') {
@@ -1592,8 +1592,12 @@ const App = () => {
             </div>
       }
 
+          {/* Leere Library: nichts zu scrollen, also wird der Scroll-
+              Container gesperrt — dieselbe Klasse, die auch die MUSIC-
+              Section festhält. Sobald Releases drin sind, darf gescrollt
+              werden, sonst wären die unteren nicht erreichbar. */}
           {screen === 'library' &&
-      <div className="main-page page">
+      <div className={`main-page page${libraryEmpty ? ' page-locked' : ''}`}>
               {!selectedAlbum ?
         <LibraryPage onSelectAlbum={(a) => setSelectedAlbum(a)} /> :
         <AlbumDetail

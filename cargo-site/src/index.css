@@ -1764,24 +1764,15 @@
     .info-row.info-album { color: var(--white); }
 
     /* ── LIBRARY PAGE ── */
+    /* Wichtig: Der Kopfabstand kommt bereits von .main-page (100px). Hier
+       darf deshalb nur noch der Abstand UNTER dem Kamel dazukommen, sonst
+       addieren sich beide und der Schriftzug rutscht zu weit nach unten.
+       Gescrollt wird eine Ebene höher, im Container .page — bei leerer
+       Library wird das dort über .page-locked abgestellt. */
     .library-page {
-      /* Platz, den der feste Kopfbereich mit dem Kamel einnimmt. Der
-         Abstand darunter ist bewusst klein gehalten, damit der Schriftzug
-         dicht folgt statt in der Mitte zu schweben. */
-      --header-space: 130px;
       max-width: 860px;
       margin: 0 auto;
-      height: 100dvh;
-      padding: calc(var(--header-space) + clamp(14px, 3vh, 40px)) 32px 40px;
-      /* Gefüllte Library darf scrollen, wenn viele Releases drin sind. */
-      overflow-y: auto;
-      -webkit-overflow-scrolling: touch;
-    }
-    /* Leere Library: alles passt auf den Schirm, also wird nicht gescrollt —
-       egal wie schmal oder niedrig das Fenster ist. */
-    .library-page.is-empty {
-      overflow: hidden;
-      padding-bottom: 0;
+      padding: clamp(40px, 7vh, 70px) 32px 60px;
     }
     .library-title {
       text-align: center;
@@ -1902,7 +1893,7 @@
     }
     .library-empty {
       text-align: center;
-      margin-top: clamp(26px, 8vh, 100px);
+      margin-top: clamp(80px, 22vh, 220px);
     }
     /* Beide Sätze sind 39 Zeichen lang. Bei fester Schriftgröße passt das
        auf schmalen Handys nicht in eine Zeile — deshalb wächst die Schrift
@@ -1924,10 +1915,7 @@
       overflow-wrap: break-word;
     }
     @media (max-width: 600px) {
-      /* Das Kamel sitzt auf dem Handy etwas höher, deshalb darf der
-         Schriftzug hier näher heranrücken. */
       .library-page {
-        --header-space: 116px;
         padding-left: 18px;
         padding-right: 18px;
       }
@@ -1935,12 +1923,11 @@
     }
 
     /* Sehr niedrige Fenster — vor allem das Handy im Querformat. Hier wird
-       zusätzlich zusammengerückt, damit auch dort nichts gescrollt werden
-       muss. */
+       zusammengerückt, damit auch dort nichts gescrollt werden muss. */
     @media (max-height: 520px) {
-      .library-page { --header-space: 96px; }
+      .library-page { padding-top: clamp(16px, 4vh, 40px); }
       .library-logo { max-height: 22vh; }
-      .library-empty { margin-top: clamp(14px, 4vh, 40px); }
+      .library-empty { margin-top: clamp(20px, 6vh, 60px); }
     }
 
     /* ── MINIMIZED PLAYER (circle + live EQ) ── */
