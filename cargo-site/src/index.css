@@ -625,6 +625,108 @@
       }
     }
 
+    /* ── RE-DOWNLOAD-FENSTER ──
+       Auswahl aus den Tracks, die man besitzt. Die Liste scrollt, damit
+       das Fenster bei vielen Titeln nicht endlos lang wird; der Verlauf
+       am unteren Rand zeigt an, dass es weitergeht. */
+    .redl-modal {
+      background: #1c1c1c;
+      max-width: 560px;
+      padding: 52px 34px 34px;
+      text-align: center;
+    }
+    .redl-title {
+      font-family: var(--mono);
+      font-size: clamp(13px, 3.2vw, 16px);
+      letter-spacing: 0.14em;
+      color: var(--red);
+      margin-bottom: 26px;
+    }
+    .redl-list {
+      max-height: min(46vh, 340px);
+      overflow-y: auto;
+      text-align: left;
+      /* Weicher Verlauf unten statt harter Kante */
+      -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 42px), transparent 100%);
+      mask-image: linear-gradient(to bottom, #000 calc(100% - 42px), transparent 100%);
+      padding-bottom: 26px;
+    }
+    .redl-row {
+      display: grid;
+      grid-template-columns: 26px 24px 1fr 26px;
+      align-items: center;
+      gap: 12px;
+      padding: 9px 2px;
+      cursor: pointer;
+    }
+    .redl-row-all .redl-name { color: #9a9590; letter-spacing: 0.16em; }
+
+    /* Kästchen: leerer Rahmen, angehakt gefüllt — wie in der Vorlage,
+       bewusst eckig statt rund. */
+    .redl-box {
+      width: 22px;
+      height: 22px;
+      border: 1.5px solid #6e6a66;
+      display: block;
+      flex-shrink: 0;
+    }
+    .redl-box.checked {
+      background: var(--red);
+      border-color: var(--red);
+      box-shadow: inset 0 0 0 3px #1c1c1c;
+    }
+    .redl-num {
+      font-family: var(--mono);
+      font-size: 13px;
+      color: #7a7570;
+      text-align: right;
+    }
+    .redl-info { min-width: 0; }
+    .redl-name {
+      display: block;
+      font-family: var(--mono);
+      font-size: clamp(12px, 3vw, 15px);
+      letter-spacing: 0.08em;
+      color: var(--white);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .redl-artist {
+      display: block;
+      font-family: var(--mono);
+      font-size: clamp(9px, 2.3vw, 11px);
+      letter-spacing: 0.05em;
+      color: #6e6a66;
+      margin-top: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .redl-state svg { width: 20px; height: 20px; stroke: var(--red); stroke-width: 2; fill: none; }
+    .redl-state .dl-ring { width: 22px; height: 22px; }
+
+    .redl-action {
+      display: flex;
+      justify-content: center;
+      margin-top: 6px;
+      min-height: 52px;
+      align-items: center;
+    }
+    .redl-go:disabled { opacity: 0.35; cursor: default; }
+    /* Der Knopf weicht beim Laden dem drehenden Bogen. */
+    .redl-spinner { width: 44px; height: 44px; border: 1.5px solid var(--red); border-radius: 50%; }
+    .redl-note {
+      font-family: var(--mono);
+      font-size: clamp(9.5px, 2.5vw, 12px);
+      letter-spacing: 0.05em;
+      color: var(--red);
+      margin-top: 18px;
+    }
+
+    /* ── RELEASE-DETAILS ── */
+    .info-value { color: var(--white); }
+
     /* ── DANKESFENSTER NACH DEM DOWNLOAD ──
        Nutzt dieselbe Zoom-Mechanik wie die Beschreibung, wächst also aus
        dem Knopf heraus, der gedrückt wurde. */

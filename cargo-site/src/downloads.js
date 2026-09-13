@@ -13,8 +13,12 @@
 // ─────────────────────────────────────────────────────────────
 
 const KEY = 'cargo_downloads_v1';
+// Eigener Schlüssel für die Zeitpunkte, damit bereits gespeicherte
+// Downloads von früher unverändert weiterfunktionieren.
+const TIME_KEY = 'cargo_downloads_at_v1';
 
 let state = read();
+let times = readTimes();
 const listeners = new Set();
 
 function read() {
@@ -29,8 +33,40 @@ function read() {
   }
 }
 
+function readTimes() {
+  try {
+    const raw = localStorage.getItem(TIME_KEY);
+    const o = raw ? JSON.parse(raw) : null;
+    return o && typeof o === 'object' ? o : {};
+  } catch (e) {
+    return {};
+  }
+}
+
 function write() {
   try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {}
+}
+
+function writeTimes() {
+  try { localStorage.setItem(TIME_KEY, JSON.stringify(times)); } catch (e) {}
+}
+
+// Zeitpunkt des jüngsten Downloads festhalten — auch bei Re-Downloads,
+// denn im Info-Fenster steht „wann zuletzt geladen“.
+export function touch(albumId) {
+  if (!albumId) return;
+  times[albumId] = new Date().toISOString();
+  writeTimes();
+  emit();
+}
+
+// Liefert ein Date oder null. Für Downloads, die es schon vor dieser
+// Funktion gab, ist kein Zeitpunkt hinterlegt.
+export function lastDownloadAt(albumId) {
+  const iso = times[albumId];
+  if (!iso) return null;
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? null : d;
 }
 
 function emit() {
@@ -76,7 +112,9 @@ export function albumIsComplete(album) {
 export function markDownloaded(albumId, trackId) {
   const before = downloadedTrackIds(albumId);
   const isNewAlbum = before.length === 0;
-  if (before.includes(trackId)) return false;
+  times[albumId] = new Date().toISOString();
+  writeTimes();
+  if (before.includes(trackId)) { emit(); return false; }
   state[albumId] = [...before, trackId].sort((a, b) => a - b);
   write();
   emit();
@@ -85,7 +123,8 @@ export function markDownloaded(albumId, trackId) {
 
 // Nur für den Notfall gedacht (z. B. später ein „Library leeren“ im Menü).
 export function forget(albumId) {
-  if (albumId) delete state[albumId]; else state = {};
+  if (albumId) { delete state[albumId]; delete times[albumId]; } else { state = {}; times = {}; }
   write();
+  writeTimes();
   emit();
 }

@@ -22,6 +22,21 @@ function useDownloads() {
   return useSyncExternalStore(downloads.subscribe, downloads.getSnapshot, downloads.getSnapshot);
 }
 
+// Alle Tracks der Seite haben dasselbe Format, deshalb steht es einmal
+// hier statt in der Datenbank. Falls du später anders exportierst, ist das
+// die einzige Stelle, die geändert werden muss.
+const DOWNLOAD_FORMAT = 'M4A (AAC / 256 kbit/s)';
+
+// „16 June 2026, 14:32“ — bewusst von Hand gesetzt, damit das Format
+// unabhängig von der Spracheinstellung des Geräts immer gleich aussieht.
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
+'July', 'August', 'September', 'October', 'November', 'December'];
+function formatDownloadDate(d) {
+  if (!d) return '—';
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}, ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 // Das laufende <audio>-Element auf Modulebene, damit die EQ-Balken die
 // Wiedergabezeit pro Bild direkt ablesen können, ohne dass dafür jedes
 // Mal React neu rendert. Wird unten in App gesetzt.
@@ -811,6 +826,12 @@ const AlbumDetail = ({ album, onBack, onPlay, currentTrack, isPlaying, variant =
   const visibleTracks = isLibrary ?
   album.tracks.filter((t) => downloads.isDownloaded(album.id, t.id)) :
   album.tracks;
+
+  // Für das Release-Info-Fenster: Die Seite rechnet den Besitzstand selbst
+  // aus, es steht nirgends fest geschrieben. Lädt man einen Track nach,
+  // stimmt die Zahl beim nächsten Öffnen automatisch.
+  const ownedCount = downloads.downloadedTrackIds(album.id).length;
+  const lastDownloadText = formatDownloadDate(downloads.lastDownloadAt(album.id));
   const [descOpen, setDescOpen] = useState(false);
   const [descClosing, setDescClosing] = useState(false);
   const [descOrigin, setDescOrigin] = useState({ tx: '0px', ty: '0px' });
@@ -820,6 +841,12 @@ const AlbumDetail = ({ album, onBack, onPlay, currentTrack, isPlaying, variant =
   const [thanksOpen, setThanksOpen] = useState(false);
   const [thanksClosing, setThanksClosing] = useState(false);
   const [thanksOrigin, setThanksOrigin] = useState({ tx: '0px', ty: '0px' });
+  const [redlOpen, setRedlOpen] = useState(false);
+  const [redlClosing, setRedlClosing] = useState(false);
+  const [redlOrigin, setRedlOrigin] = useState({ tx: '0px', ty: '0px' });
+  const [redlSel, setRedlSel] = useState([]);   // angehakte Tracknummern
+  const [redlDone, setRedlDone] = useState([]); // in diesem Durchgang fertig
+  const [redlBusy, setRedlBusy] = useState(false);
 
   // Neu rendern, sobald sich der Download-Stand ändert.
   useDownloads();
@@ -884,9 +911,72 @@ const AlbumDetail = ({ album, onBack, onPlay, currentTrack, isPlaying, variant =
     if (onGoLibrary) onGoLibrary();
   };
 
-  const handleRedownload = () => {
+  // ── Re-Download ────────────────────────────────────────────────────
+  // Fenster mit Auswahlliste: nur Tracks, die man wirklich besitzt.
+  // Beim Öffnen ist nichts angehakt — wer alles will, tippt ALL.
+  const openRedownload = (e) => {
+    const el = e.currentTarget;
+    const rect = el.getBoundingClientRect();
+    setRedlOrigin({
+      tx: `${rect.left + rect.width / 2 - window.innerWidth / 2}px`,
+      ty: `${rect.top + rect.height / 2 - window.innerHeight / 2}px`
+    });
+    setRedlSel([]);
+    setRedlClosing(false);
+    setRedlOpen(true);
+  };
 
-    /* no function for now */};
+  const closeRedownload = () => {
+    if (redlBusy) return; // während des Ladens bleibt das Fenster zu
+    setRedlClosing(true);
+    setTimeout(() => {
+      setRedlOpen(false);
+      setRedlClosing(false);
+      setRedlSel([]);
+      setRedlDone([]);
+    }, 320);
+  };
+
+  const toggleSel = (id) =>
+  setRedlSel((p) => p.includes(id) ? p.filter((x) => x !== id) : [...p, id]);
+
+  const allSelected = visibleTracks.length > 0 && redlSel.length === visibleTracks.length;
+  const toggleAll = () =>
+  setRedlSel(allSelected ? [] : visibleTracks.map((t) => t.id));
+
+  const handleRedownload = async () => {
+    if (redlBusy || !redlSel.length) return;
+    const list = visibleTracks.filter((t) => redlSel.includes(t.id) && t.file);
+    if (!list.length) return;
+    setRedlBusy(true);
+    setRedlDone([]);
+    const files = [];
+    try {
+      for (const t of list) {
+        setTrackProgress(t.id, 0);
+        try {
+          const bytes = await fetchWithProgress(t.file, (p) =>
+          setTrackProgress(t.id, p === null ? 0.5 : p)
+          );
+          files.push({ name: trackFilename(t), bytes });
+          setRedlDone((p) => [...p, t.id]);
+        } catch (err) {
+          console.warn('[re-download]', t.title, err && err.message);
+        } finally {
+          clearTrack(t.id);
+        }
+      }
+      // Wie beim großen Knopf: mehrere Tracks als Archiv, einer als Datei.
+      if (files.length === 1) {
+        saveBlob(new Blob([files[0].bytes], { type: 'audio/mp4' }), files[0].name);
+      } else if (files.length > 1) {
+        saveBlob(makeZip(files), `${safeFilename(album.title, 'release')}.zip`);
+      }
+      if (files.length) downloads.touch(album.id);
+    } finally {
+      setRedlBusy(false);
+    }
+  };
 
   // ── Downloads ──────────────────────────────────────────────────────
   // Zustand je Track: nichts | { progress } während des Ladens.
@@ -1011,7 +1101,7 @@ const AlbumDetail = ({ album, onBack, onPlay, currentTrack, isPlaying, variant =
             {isLibrary ?
         <>
               <div className="redownload-wrap">
-                <button className="redownload-btn" onClick={handleRedownload}>RE-DOWNLOAD</button>
+                <button className="redownload-btn" onClick={openRedownload}>RE-DOWNLOAD</button>
               </div>
               <button className="action-circle" onClick={openInfo} title="Download details" aria-label="Download details">
                 <InfoReceiptIcon />
@@ -1115,13 +1205,92 @@ const AlbumDetail = ({ album, onBack, onPlay, currentTrack, isPlaying, variant =
               
                   <svg viewBox="0 0 24 24"><path d="M5 5l14 14M19 5L5 19" /></svg>
                 </button>
-                <div className="desc-modal-title">download details</div>
+                <div className="desc-modal-title">release details</div>
                 <div className="info-modal-rows">
-                  <div className="info-row info-album">{album.title}</div>
-                  <div className="info-row">{album.downloadInfo && album.downloadInfo.format || 'FLAC (24-bit / Lossless)'}</div>
-                  <div className="info-row">Total: {album.downloadInfo && album.downloadInfo.total || 'Free (CHF 0.00)'}</div>
-                  <div className="info-row">Downloaded: {album.downloadInfo && album.downloadInfo.downloaded || '—'}</div>
+                  <div className="info-row">Release: <span className="info-value">{album.title}</span></div>
+                  <div className="info-row">Owned: <span className="info-value">{ownedCount} of {album.tracks.length} Tracks</span></div>
+                  <div className="info-row">Format: <span className="info-value">{DOWNLOAD_FORMAT}</span></div>
+                  <div className="info-row">Downloaded: <span className="info-value">{lastDownloadText}</span></div>
+                  <div className="info-row">Total: <span className="info-value">Free (CHF 0.00)</span></div>
                 </div>
+              </div>
+            </div>,
+        document.body
+      )}
+
+          {/* Re-Download — Auswahl aus den Tracks, die man besitzt.
+              Solange geladen wird, lässt sich das Fenster nicht schließen,
+              damit kein angefangener Download verloren geht. */}
+          {redlOpen && ReactDOM.createPortal(
+        <div
+          className={`desc-modal-overlay${redlClosing ? ' closing' : ''}`}
+          onClick={closeRedownload}>
+
+              <div
+            className="desc-modal redl-modal"
+            onClick={(e) => e.stopPropagation()}
+            style={{ '--tx': redlOrigin.tx, '--ty': redlOrigin.ty }}>
+
+                {!redlBusy &&
+            <button className="desc-modal-close" onClick={closeRedownload} aria-label="Close">
+                    <svg viewBox="0 0 24 24"><path d="M5 5l14 14M19 5L5 19" /></svg>
+                  </button>
+            }
+                <div className="redl-title">select tracks</div>
+
+                <div className="redl-list">
+                  <label className="redl-row redl-row-all">
+                    <span
+                className={`redl-box${allSelected ? ' checked' : ''}`}
+                role="checkbox"
+                aria-checked={allSelected}
+                tabIndex={0}
+                onClick={() => !redlBusy && toggleAll()}
+                onKeyDown={(e) => {if (e.key === ' ' || e.key === 'Enter') {e.preventDefault();!redlBusy && toggleAll();}}} />
+                    <span className="redl-num" />
+                    <span className="redl-info"><span className="redl-name">ALL</span></span>
+                    <span className="redl-state" />
+                  </label>
+
+                  {visibleTracks.map((t) => {
+                const sel = redlSel.includes(t.id);
+                const loading = busy[t.id] !== undefined;
+                const done = redlDone.includes(t.id);
+                return (
+                  <label key={t.id} className="redl-row">
+                        <span
+                    className={`redl-box${sel ? ' checked' : ''}`}
+                    role="checkbox"
+                    aria-checked={sel}
+                    tabIndex={0}
+                    onClick={() => !redlBusy && toggleSel(t.id)}
+                    onKeyDown={(e) => {if (e.key === ' ' || e.key === 'Enter') {e.preventDefault();!redlBusy && toggleSel(t.id);}}} />
+                        <span className="redl-num">{t.id}</span>
+                        <span className="redl-info">
+                          <span className="redl-name">{t.title}</span>
+                          <span className="redl-artist">{t.artist}</span>
+                        </span>
+                        <span className="redl-state">
+                          {done ? <CheckIcon /> : loading ? <ProgressRing value={busy[t.id]} /> : null}
+                        </span>
+                      </label>);
+
+              })}
+                </div>
+
+                <div className="redl-action">
+                  {redlBusy ?
+              <div className="dl-circle is-busy redl-spinner"><SpinnerArc /></div> :
+
+              <button
+                className="redownload-btn redl-go"
+                onClick={handleRedownload}
+                disabled={!redlSel.length}>
+                      RE-DOWNLOAD
+                    </button>
+              }
+                </div>
+                <div className="redl-note">files will download directly to your device.</div>
               </div>
             </div>,
         document.body
