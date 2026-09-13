@@ -1884,22 +1884,27 @@
       text-align: center;
       margin-top: clamp(80px, 22vh, 220px);
     }
+    /* Beide Sätze sind 39 Zeichen lang. Bei fester Schriftgröße passt das
+       auf schmalen Handys nicht in eine Zeile — deshalb wächst die Schrift
+       jetzt mit der Bildschirmbreite mit und ist erst am Laptop wieder so
+       groß wie vorher. */
     .library-empty-title {
       font-family: var(--mono);
-      font-size: 15px;
+      font-size: clamp(10.5px, 3.4vw, 15px);
       letter-spacing: 0.1em;
       color: var(--red);
-      margin-bottom: 26px;
+      margin-bottom: clamp(16px, 4vw, 26px);
     }
     .library-empty-sub {
       font-family: var(--mono);
-      font-size: 14px;
+      font-size: clamp(9.5px, 3vw, 14px);
       line-height: 1.9;
       letter-spacing: 0.06em;
       color: #6e6a66;
+      overflow-wrap: break-word;
     }
     @media (max-width: 600px) {
-      .library-page { padding: 120px 22px 100px; }
+      .library-page { padding: 120px 18px 100px; }
       .library-grid { gap: 26px 18px; }
     }
 
