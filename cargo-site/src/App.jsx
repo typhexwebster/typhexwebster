@@ -91,10 +91,13 @@ const ProgressRing = ({ value = 0 }) => {
 // Sich drehender Pfeilbogen für den großen Knopf. Bewusst ohne
 // Fortschrittsanzeige — den echten Fortschritt sieht man an den
 // einzelnen Tracks darunter.
+// Maße nach der Photoshop-Vorlage: Das Koordinatensystem ist exakt so groß
+// wie der Knopf (44), der Bogen misst 27 im Durchmesser und lässt oben
+// links eine Lücke von 90°, an der die Pfeilspitze sitzt.
 const SpinnerArc = () =>
-<svg viewBox="0 0 24 24" fill="none" className="dl-spin">
-        <path d="M12 2.75a9.25 9.25 0 1 0 9.25 9.25" strokeLinecap="round" />
-        <path d="M17.4 11.1l3.85 1.9 1.5-3.95" strokeLinecap="round" strokeLinejoin="round" />
+<svg viewBox="0 0 44 44" fill="none" className="dl-spin" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M28.75 10.31 A13.5 13.5 0 1 1 10.31 15.25" />
+        <path d="M6.55 16.62 L10.31 15.25 L11.01 19.19" />
       </svg>;
 
 const DownloadIcon = () =>
