@@ -1206,6 +1206,96 @@
       will-change: transform;
     }
 
+    /* ── DIE PLATTE ──
+       Vier konzentrische Schichten liegen deckungsgleich übereinander und
+       drehen sich unterschiedlich. Der Stapel steht in einer Perspektive,
+       damit er auf die Schläge wirklich nach vorne kommt statt nur größer
+       zu werden. */
+    .rec-btn {
+      position: relative;
+      display: block;
+      width: 100%;
+      padding: 0;
+      border: 0;
+      background: none;
+      cursor: pointer;
+      perspective: 900px;
+      -webkit-tap-highlight-color: transparent;
+    }
+    /* Unsichtbare Vorlage: gibt dem Knopf seine Höhe, da die drehenden
+       Schichten absolut liegen und selbst keinen Platz einnehmen. */
+    .rec-sizer {
+      display: block;
+      width: 100%;
+      height: auto;
+      visibility: hidden;
+    }
+    .rec-stack {
+      position: absolute;
+      inset: 0;
+      transform-style: preserve-3d;
+      will-change: transform;
+    }
+    .rec-layer {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      transform-origin: 50% 50%;
+      will-change: transform;
+      user-select: none;
+      -webkit-user-drag: none;
+    }
+    /* Der Schein dahinter — nimmt die Farben der Platte auf. */
+    .rec-glow {
+      position: absolute;
+      left: 50%; top: 50%;
+      width: 150%; height: 150%;
+      margin: -75% 0 0 -75%;
+      border-radius: 50%;
+      pointer-events: none;
+      opacity: 0;
+      background:
+        radial-gradient(circle, rgba(255,72,160,0.55) 0%, rgba(150,40,190,0.35) 32%, rgba(255,110,30,0.18) 52%, transparent 72%);
+      filter: blur(22px);
+      will-change: opacity, transform;
+    }
+    .rec-hint {
+      display: block;
+      margin-top: 10px;
+      color: var(--red);
+      letter-spacing: 0.1em;
+      font-size: 0.85em;
+    }
+
+    /* ── LICHTER IM HINTERGRUND ──
+       Weiche, große Farbschleier. Bewusst kein Stroboskop: Sie atmen mit
+       dem Takt, blitzen aber nicht. */
+    .cargo-lights {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      opacity: 0;
+      overflow: hidden;
+      mix-blend-mode: screen;
+    }
+    .cargo-light {
+      position: absolute;
+      display: block;
+      transform: translate3d(0,0,0);
+      filter: blur(60px);
+      will-change: transform, opacity;
+    }
+    /* Inhalt bleibt über den Lichtern */
+    .cargo-page { position: relative; z-index: 1; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .cargo-lights { display: none; }
+      .rec-layer, .rec-stack { transition: none; }
+    }
+
     .cargo-outro {
       margin-top: clamp(100px, 20vh, 200px);
       text-align: center;

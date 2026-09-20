@@ -10,6 +10,7 @@ import {
 import { ALBUMS, COVER_IMAGES, GALLERY, SITE, loadTrackEq } from './content.js';
 import * as eqData from './eqData.js';
 import * as downloads from './downloads.js';
+import * as beatMotion from './beatMotion.js';
 import { fetchWithProgress, saveBlob, makeZip, safeFilename, extensionFromUrl } from './fileTransfer.js';
 
 
@@ -1515,8 +1516,11 @@ const NowPlayingBar = ({ track, album, isPlaying, phase, minimized, tweaks, onTo
 // Die Texte sind Beispiele und stehen bewusst noch im Code.
 const CARGO_OBJECTS = [
 {
-  src: '/uploads/cargo-record.webp',
+  // Die Platte wird nicht als ein Bild geladen, sondern aus vier
+  // drehbaren Schichten zusammengesetzt — siehe RECORD_LAYERS.
+  src: 'record',
   alt: 'Atlas phonograph record',
+  kind: 'record',
   side: 'left', depth: 74, width: 78, tilt: -4,
   caption: 'atlas phonograph record. the oldest one ever found on cargo. the tribes did not play it for pleasure — they knelt around it. sound was the only thing that came from the sky and answered back.'
 },
@@ -1545,6 +1549,221 @@ const CARGO_OBJECTS = [
   caption: 'logo of cargo. scratched into the rock above every listening pit, long before anyone wrote it down.'
 }];
 
+
+// ─── DIE PLATTE ─────────────────────────────────────────────────────
+// Antippen startet den Beat. Die Scheibe ist dafür in vier konzentrische
+// Schichten zerlegt, die sich unterschiedlich schnell und teils gegenläufig
+// drehen. Das Hüpfen nach vorne, der Schein dahinter und die Lichter im
+// Hintergrund folgen der vorberechneten Kurve aus beatMotion.js — ohne
+// Web Audio, siehe die Erklärung dort.
+const RECORD_LAYERS = [
+{ src: '/uploads/cargo-record-band.webp', spin: -0.34 },  // dunkles Band, gegenläufig
+{ src: '/uploads/cargo-record-rings.webp', spin: 0.19 },  // äußere Ringe, träge mit
+{ src: '/uploads/cargo-record-disc.webp', spin: 0.58 },   // Scheibe mit den Speichen
+{ src: '/uploads/cargo-record-core.webp', spin: 1.0 }];   // Kern, am schnellsten
+
+
+const CargoRecord = ({ item, onBeatStart }) => {
+  const rootRef = useRef(null);
+  const audioRef = useRef(null);
+  const liveRef = useRef(false);
+  const [live, setLive] = useState(false);
+
+  const toggle = () => {
+    const a = audioRef.current;
+    if (!a) return;
+    const next = !liveRef.current;
+    liveRef.current = next;
+    setLive(next);
+    if (next) {
+      if (onBeatStart) onBeatStart();   // laufenden Song anhalten
+      beatMotion.load();
+      a.loop = true;
+      a.volume = 0;                     // wird in der Schleife hochgezogen
+      const p = a.play();
+      if (p && p.catch) p.catch(() => {});
+    }
+    // Das Anhalten macht die Schleife, damit Ton und Drehung gemeinsam
+    // austrudeln statt abrupt abzureißen.
+  };
+
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    const layers = Array.from(root.querySelectorAll('.rec-layer'));
+    const glow = root.querySelector('.rec-glow');
+    const stack = root.querySelector('.rec-stack');
+    const factors = layers.map((el) => Number(el.dataset.spin) || 0);
+
+    let raf = 0, last = performance.now(), running = true;
+    let spin = 0, energy = 0, hit = 0;
+    const vals = [0, 0, 0, 0];
+
+    const tick = (now) => {
+      let dt = (now - last) / 1000;
+      last = now;
+      if (dt > 1 / 30) dt = 1 / 30;
+
+      const a = audioRef.current;
+      const want = liveRef.current ? 1 : 0;
+      // Weiches Auf- und Abblenden. Beim Ausschalten dauert es länger,
+      // damit die Platte sichtbar austrudelt.
+      const tau = want ? 0.35 : 0.75;
+      energy += (want - energy) * (1 - Math.exp(-dt / tau));
+
+      if (a) {
+        a.volume = Math.max(0, Math.min(1, energy));   // Ton blendet mit
+        if (!want && energy < 0.02 && !a.paused) a.pause();
+      }
+
+      if (energy > 0.005 && a && beatMotion.ready()) {
+        beatMotion.sample(a.currentTime, vals);
+      } else {
+        vals[0] = vals[1] = vals[2] = vals[3] = 0;
+      }
+
+      // Schlag-Hüllkurve: springt sofort hoch, fällt gemächlich —
+      // dadurch wird aus einem kurzen Impuls ein sichtbarer Stoß.
+      hit = Math.max(vals[0], hit - dt * 2.4);
+
+      // Grunddrehung, leicht vom Mittenpegel angetrieben
+      spin += (16 + vals[2] * 22) * energy * dt;
+
+      const pop = hit * energy;
+      for (let i = 0; i < layers.length; i++) {
+        layers[i].style.transform = `rotate(${(spin * factors[i]).toFixed(2)}deg)`;
+      }
+      if (stack) {
+        // Nach vorne aus dem Bild: echte Tiefe plus eine Spur größer.
+        stack.style.transform =
+        `translate3d(0,${(-pop * 10).toFixed(2)}px,${(pop * 70).toFixed(1)}px) scale(${(1 + pop * 0.05).toFixed(4)})`;
+      }
+      if (glow) {
+        glow.style.opacity = (energy * (0.30 + vals[1] * 0.55)).toFixed(3);
+        glow.style.transform = `scale(${(0.82 + vals[1] * 0.3 + pop * 0.12).toFixed(3)})`;
+      }
+
+      // Für die Lichter im Hintergrund bereitstellen
+      beatMotion.pulse.energy = energy;
+      beatMotion.pulse.attack = hit;
+      beatMotion.pulse.bass = vals[1];
+      beatMotion.pulse.mid = vals[2];
+      beatMotion.pulse.high = vals[3];
+
+      if (running) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => {
+      running = false;
+      cancelAnimationFrame(raf);
+      beatMotion.pulse.energy = 0;
+      const a = audioRef.current;
+      if (a) { try { a.pause(); } catch (e) {} }
+    };
+  }, []);
+
+  return (
+    <div className={`cargo-obj cargo-obj-${item.side}`} data-depth={item.depth} data-tilt={item.tilt}>
+          <div className="cargo-obj-media" style={{ width: `${item.width}%` }}>
+            <button
+          type="button"
+          className={`rec-btn${live ? ' is-live' : ''}`}
+          ref={rootRef}
+          onClick={toggle}
+          aria-pressed={live}
+          aria-label={live ? 'Stop the record' : 'Play the record'}>
+
+              <span className="rec-glow" />
+              <span className="rec-stack">
+                {RECORD_LAYERS.map((l) =>
+            <img
+              key={l.src}
+              className="rec-layer"
+              data-spin={l.spin}
+              src={l.src}
+              alt=""
+              loading="lazy"
+              draggable={false} />
+            )}
+              </span>
+              {/* Nur zur Größenbestimmung: gibt dem Stapel seine Höhe. */}
+              <img className="rec-sizer" src="/uploads/cargo-record-disc.webp" alt={item.alt} aria-hidden="true" draggable={false} />
+              <audio ref={audioRef} src="/uploads/cargo-beat.m4a" preload="none" playsInline />
+            </button>
+          </div>
+          <div className="cargo-obj-caption">
+            {item.caption}
+            <span className="rec-hint">{live ? '— now playing. tap to stop.' : '— tap the record.'}</span>
+          </div>
+        </div>);
+
+
+};
+
+// Farbige Schleier über dem schwarzen Hintergrund des CARGO-Bereichs.
+// Sie leben nur, solange der Beat läuft, und atmen mit ihm. Bewusst weiche,
+// langsame Verläufe statt harter Blitze — schnelles Blinken kann bei
+// lichtempfindlichen Menschen Anfälle auslösen.
+const CARGO_LIGHTS = [
+{ x: 18, y: 16, size: 46, hue: 320, drift: 13 },
+{ x: 78, y: 34, size: 38, hue: 22, drift: -17 },
+{ x: 32, y: 62, size: 52, hue: 268, drift: 21 },
+{ x: 68, y: 86, size: 40, hue: 200, drift: -11 }];
+
+
+const CargoLights = () => {
+  const ref = useRef(null);
+  useEffect(() => {
+    const root = ref.current;
+    if (!root) return;
+    const blobs = Array.from(root.querySelectorAll('.cargo-light'));
+    const drift = blobs.map((b) => Number(b.dataset.drift) || 10);
+    let raf = 0, t = 0, last = performance.now(), running = true;
+
+    const tick = (now) => {
+      let dt = (now - last) / 1000;
+      last = now;
+      if (dt > 1 / 30) dt = 1 / 30;
+      t += dt;
+
+      const p = beatMotion.pulse;
+      root.style.opacity = (p.energy * 0.9).toFixed(3);
+
+      for (let i = 0; i < blobs.length; i++) {
+        // Langsames Schweben, dazu ein Atmen im Takt. Jede Blase hat ihre
+        // eigene Geschwindigkeit, damit nichts synchron wirkt.
+        const ph = t * (0.12 + i * 0.037);
+        const dx = Math.sin(ph * 1.7 + i) * drift[i];
+        const dy = Math.cos(ph * 1.3 + i * 2) * drift[i] * 0.7;
+        const band = i % 2 === 0 ? p.bass : p.high;
+        const s = 0.8 + band * 0.35 + p.attack * 0.12;
+        blobs[i].style.transform =
+        `translate3d(${dx.toFixed(1)}px, ${dy.toFixed(1)}px, 0) scale(${s.toFixed(3)})`;
+        blobs[i].style.opacity = (0.45 + band * 0.45).toFixed(3);
+      }
+      if (running) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => { running = false; cancelAnimationFrame(raf); };
+  }, []);
+
+  return (
+    <div className="cargo-lights" ref={ref} aria-hidden="true">
+          {CARGO_LIGHTS.map((l, i) =>
+      <span
+        key={i}
+        className="cargo-light"
+        data-drift={l.drift}
+        style={{
+          left: `${l.x}%`, top: `${l.y}%`,
+          width: `${l.size}vmax`, height: `${l.size}vmax`,
+          background: `radial-gradient(circle, hsla(${l.hue},85%,55%,0.5) 0%, hsla(${l.hue},85%,45%,0.22) 38%, transparent 70%)`
+        }} />
+      )}
+        </div>);
+
+
+};
 
 // Ein Objekt samt Bildunterschrift. Die Bewegung macht die gemeinsame
 // Schleife unten (useCargoMotion), deshalb steht hier nur das Markup.
@@ -1665,7 +1884,7 @@ function useCargoMotion(rootRef) {
   }, []);
 }
 
-const CargoPage = () => {
+const CargoPage = ({ onBeatStart }) => {
   const pageRef = useRef(null);
   useCargoMotion(pageRef);
   return (
@@ -1711,8 +1930,10 @@ const CargoPage = () => {
         </div>
 
         <div className="cargo-objects">
-          {CARGO_OBJECTS.map((item, i) =>
-    <CargoObject key={item.src} item={item} index={i} />
+          {CARGO_OBJECTS.map((item) =>
+    item.kind === 'record' ?
+    <CargoRecord key={item.src} item={item} onBeatStart={onBeatStart} /> :
+    <CargoObject key={item.src} item={item} />
     )}
         </div>
 
@@ -2165,7 +2386,17 @@ const App = () => {
             </div>
       }
 
-          {screen === 'cargo' && <div className="main-page page"><CargoPage /></div>}
+          {screen === 'cargo' &&
+      <div className="main-page page">
+              {/* Die Lichter stehen bewusst AUSSERHALB von CargoPage:
+                  Dort läuft die Einblend-Animation mit transform, und
+                  innerhalb eines transformierten Elements bezieht sich
+                  `fixed` nicht mehr auf den Bildschirm, sondern auf
+                  dieses Element. */}
+              <CargoLights />
+              <CargoPage onBeatStart={() => setIsPlaying(false)} />
+            </div>
+      }
           {screen === 'store' && <div className="main-page page"><StorePage /></div>}
           {screen === 'contact' && <div className="main-page page contact-page-wrap"><ContactPage /></div>}
 
