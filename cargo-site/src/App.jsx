@@ -1508,117 +1508,168 @@ const NowPlayingBar = ({ track, album, isPlaying, phase, minimized, tweaks, onTo
 // ─── CARGO PAGE ─────────────────────────────────────────────────────
 // ─── CARGO: OBJEKTE DER STRECKE ─────────────────────────────────────
 // Reihenfolge = Reihenfolge auf der Seite. `side` bestimmt, auf welcher
-// Seite das Objekt sitzt, der Text steht jeweils gegenüber. `lag` steuert,
-// wie stark das Objekt beim Scrollen nachzieht — je größer, desto träger.
+// Seite das Objekt sitzt, der Text steht jeweils gegenüber. `depth` ist
+// der Weg in Pixeln, den das Objekt über eine Fensterhöhe hinweg zurücklegt
+// — je größer, desto stärker die Parallaxe und desto mehr zieht es nach.
 // `width` ist die Breite in Prozent der Spalte.
 // Die Texte sind Beispiele und stehen bewusst noch im Code.
 const CARGO_OBJECTS = [
 {
   src: '/uploads/cargo-record.webp',
   alt: 'Atlas phonograph record',
-  side: 'left', lag: 26, width: 78, tilt: -4,
+  side: 'left', depth: 74, width: 78, tilt: -4,
   caption: 'atlas phonograph record. the oldest one ever found on cargo. the tribes did not play it for pleasure — they knelt around it. sound was the only thing that came from the sky and answered back.'
 },
 {
   src: '/uploads/cargo-angel.webp',
   alt: 'Cargo angel',
-  side: 'right', lag: 14, width: 84, tilt: 3,
+  side: 'right', depth: 44, width: 84, tilt: 3,
   caption: '4394 years old cargo angel. if you see one, you are meant to die — but he will protect you.'
 },
 {
   src: '/uploads/cargo-pot.webp',
   alt: 'Atlas pot',
-  side: 'left', lag: 34, width: 34, tilt: 2,
+  side: 'left', depth: 96, width: 34, tilt: 2,
   caption: 'pot of the atlas sector. crafted by an old civilisation. they buried one with every record, so the music would have something to drink.'
 },
 {
   src: '/uploads/cargo-mask.webp',
   alt: 'Tribe mask',
-  side: 'right', lag: 20, width: 62, tilt: -3,
+  side: 'right', depth: 58, width: 62, tilt: -3,
   caption: 'mask of one of the first tribes in the great desert of atlas, in the hot atlas section. worn only by the one who was allowed to touch the record.'
 },
 {
   src: '/uploads/cargo-symbol.webp',
   alt: 'Cargo symbol',
-  side: 'left', lag: 10, width: 58, tilt: 0,
+  side: 'left', depth: 30, width: 58, tilt: 0,
   caption: 'logo of cargo. scratched into the rock above every listening pit, long before anyone wrote it down.'
 }];
 
 
-// Ein Objekt samt Bildunterschrift. Das Nachziehen läuft über eine eigene
-// Schleife statt über React, damit beim Scrollen nichts neu gerendert wird.
-const CargoObject = ({ item, index }) => {
-  const wrapRef = useRef(null);
-  const imgRef = useRef(null);
-  const textRef = useRef(null);
+// Ein Objekt samt Bildunterschrift. Die Bewegung macht die gemeinsame
+// Schleife unten (useCargoMotion), deshalb steht hier nur das Markup.
+// Tiefe und Neigung wandern als data-Attribute mit, damit die Schleife sie
+// findet, ohne dass React beim Scrollen etwas neu rendern muss.
+const CargoObject = ({ item }) =>
+<div className={`cargo-obj cargo-obj-${item.side}`} data-depth={item.depth} data-tilt={item.tilt}>
+      <div className="cargo-obj-media" style={{ width: `${item.width}%` }}>
+        <img
+      src={item.src}
+      alt={item.alt}
+      loading="lazy"
+      draggable={false}
+      onDragStart={(e) => e.preventDefault()}
+      onContextMenu={(e) => e.preventDefault()} />
+      </div>
+      <div className="cargo-obj-caption">{item.caption}</div>
+    </div>;
 
+
+// ─── BEWEGUNG DER OBJEKTSTRECKE ─────────────────────────────────────
+// Erster Versuch hing die Bewegung an der Scroll-GESCHWINDIGKEIT. Die
+// springt aber bei jedem Mausrad-Klick sprunghaft, und das übertrug sich
+// als Zucken auf die Objekte.
+//
+// Jetzt hängt das Ziel allein an der Scroll-POSITION — eine ruhige, stetige
+// Größe ohne Sprünge. Darauf sitzt eine träge Feder: Sie kommt beim
+// schnellen Scrollen nicht hinterher, dadurch entsteht das Schleifen ganz
+// von selbst. Und wenn das Scrollen aufhört — auch unten am Ende —,
+// schwingt sie einmal sanft über und kommt zur Ruhe. Das ist das Abprallen.
+//
+// Die Feder rechnet mit echter Zeit statt pro Bild. Auf einem 120-Hz-iPhone
+// läuft sie dadurch genauso schnell ab wie auf einem 60-Hz-Monitor.
+function useCargoMotion(rootRef) {
   useEffect(() => {
-    const scroller = wrapRef.current && wrapRef.current.closest('.page');
+    const root = rootRef.current;
+    if (!root) return;
+    const scroller = root.closest('.page');
     if (!scroller) return;
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
-    let raf = 0;
-    let objY = 0, objV = 0;      // Position und Tempo des Objekts
-    let textY = 0, textV = 0;
-    let lastScroll = scroller.scrollTop;
-    let velocity = 0;
-    let running = true;
+    const nodes = Array.from(root.querySelectorAll('.cargo-obj'));
+    if (!nodes.length) return;
 
-    // Federkonstante und Dämpfung. Die Dämpfung liegt bewusst unter 1,
-    // dadurch schwingt die Feder leicht über und schaukelt sich aus —
-    // das ist das Abprallen, wenn man unten ankommt oder abrupt stoppt.
-    const K = 0.11, DAMP = 0.76;
+    const items = nodes.map((el) => ({
+      el,
+      media: el.querySelector('.cargo-obj-media img'),
+      caption: el.querySelector('.cargo-obj-caption'),
+      depth: Number(el.dataset.depth) || 40,
+      tilt: Number(el.dataset.tilt) || 0,
+      top: 0, height: 0,
+      y: 0, v: 0, ty: 0, tv: 0
+    }));
 
-    const tick = () => {
-      const now = scroller.scrollTop;
-      const delta = now - lastScroll;
-      lastScroll = now;
-      // Geglättete Scroll-Geschwindigkeit — daraus entsteht das Schleifen.
-      velocity += (delta - velocity) * 0.25;
-
-      // Ziel: Das Objekt bleibt um ein Vielfaches der Geschwindigkeit
-      // zurück. Der Text zieht schwächer nach als das Bild, sonst wirkt
-      // die Seite wie Wackelpudding.
-      const targetObj = -velocity * (item.lag / 10);
-      const targetText = -velocity * (item.lag / 26);
-
-      objV = (objV + (targetObj - objY) * K) * DAMP;
-      objY += objV;
-      textV = (textV + (targetText - textY) * K) * DAMP;
-      textY += textV;
-
-      if (imgRef.current) {
-        imgRef.current.style.transform =
-        `translate3d(0, ${objY.toFixed(2)}px, 0) rotate(${item.tilt}deg)`;
+    let viewH = scroller.clientHeight || 1;
+    const measure = () => {
+      viewH = scroller.clientHeight || 1;
+      const base = scroller.getBoundingClientRect().top - scroller.scrollTop;
+      for (const it of items) {
+        const r = it.el.getBoundingClientRect();
+        it.top = r.top - base;
+        it.height = r.height;
       }
-      if (textRef.current) {
-        textRef.current.style.transform = `translate3d(0, ${textY.toFixed(2)}px, 0)`;
+    };
+    measure();
+
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
+    if (ro) ro.observe(root);
+    window.addEventListener('resize', measure);
+
+    // 0.8 Hz ist bewusst langsam, die Dämpfung knapp unter 1 lässt sie
+    // einmal weich überschwingen statt hart einzurasten.
+    const FREQ = 0.8;
+    const ZETA = 0.7;
+    const W = 2 * Math.PI * FREQ;
+
+    let raf = 0, last = performance.now(), running = true;
+
+    const tick = (now) => {
+      let dt = (now - last) / 1000;
+      last = now;
+      // Nach einem Tabwechsel kommt ein riesiger Sprung — abfangen, sonst
+      // schießt die Feder aus dem Bild.
+      if (dt > 1 / 30) dt = 1 / 30;
+
+      const scroll = scroller.scrollTop;
+
+      for (const it of items) {
+        // Abstand der Objektmitte zur Bildschirmmitte, auf die Fensterhöhe
+        // normiert: oben etwa -1, in der Mitte 0, unten etwa +1.
+        const offset = (it.top + it.height / 2 - scroll - viewH / 2) / viewH;
+        const target = offset * it.depth;
+        const targetText = target * 0.4;   // Text zieht schwächer nach
+
+        it.v += (W * W * (target - it.y) - 2 * ZETA * W * it.v) * dt;
+        it.y += it.v * dt;
+        it.tv += (W * W * (targetText - it.ty) - 2 * ZETA * W * it.tv) * dt;
+        it.ty += it.tv * dt;
+
+        if (it.media) {
+          it.media.style.transform =
+          `translate3d(0, ${it.y.toFixed(2)}px, 0) rotate(${it.tilt}deg)`;
+        }
+        if (it.caption) {
+          it.caption.style.transform = `translate3d(0, ${it.ty.toFixed(2)}px, 0)`;
+        }
       }
       if (running) raf = requestAnimationFrame(tick);
     };
+
     raf = requestAnimationFrame(tick);
-    return () => { running = false; cancelAnimationFrame(raf); };
-  }, [item.lag, item.tilt]);
+    return () => {
+      running = false;
+      cancelAnimationFrame(raf);
+      if (ro) ro.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, []);
+}
 
+const CargoPage = () => {
+  const pageRef = useRef(null);
+  useCargoMotion(pageRef);
   return (
-    <div className={`cargo-obj cargo-obj-${item.side}`} ref={wrapRef}>
-          <div className="cargo-obj-media" style={{ width: `${item.width}%` }}>
-            <img
-          ref={imgRef}
-          src={item.src}
-          alt={item.alt}
-          loading="lazy"
-          draggable={false}
-          onDragStart={(e) => e.preventDefault()}
-          onContextMenu={(e) => e.preventDefault()} />
-          </div>
-          <div className="cargo-obj-caption" ref={textRef}>{item.caption}</div>
-        </div>);
-
-
-};
-
-const CargoPage = () =>
-<div className="cargo-page page-enter">
+    <div className="cargo-page page-enter" ref={pageRef}>
         <div className="cargo-section-label">THE LABEL</div>
         <div className="section-divider" />
         <img
@@ -1668,7 +1719,9 @@ const CargoPage = () =>
         <div className="cargo-outro">
           relics recovered from the atlas sector — catalogued by CARGO.
         </div>
-      </div>;
+      </div>);
+
+};
 
 
 // ─── STORE PAGE ─────────────────────────────────────────────────────
