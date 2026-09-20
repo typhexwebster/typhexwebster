@@ -985,6 +985,22 @@ const AlbumDetail = ({ album, onBack, onPlay, currentTrack, isPlaying, variant =
   const [busy, setBusy] = useState({});          // trackId -> 0..1
   const [allBusy, setAllBusy] = useState(false); // großer Knopf dreht sich
 
+  // Der große Knopf steht für das ganze Release, nicht für einen einzelnen
+  // Track. Er soll sich deshalb auch dann drehen, wenn der laufende
+  // Download das Release vollständig macht — sonst springt er bei einer
+  // Single vom Pfeil direkt auf den Haken, ganz ohne Animation.
+  // Lädt man dagegen Track 3 von 5, bleibt oben der Pfeil stehen: Das
+  // Release ist danach ja immer noch unvollständig.
+  const finishingRelease = (() => {
+    if (albumDone) return false;
+    const running = Object.keys(busy).map(Number);
+    if (!running.length) return false;
+    const have = downloads.downloadedTrackIds(album.id);
+    const missing = album.tracks.filter((t) => t.file && !have.includes(t.id));
+    return missing.length > 0 && missing.every((t) => running.includes(t.id));
+  })();
+  const albumBusy = allBusy || finishingRelease;
+
   const setTrackProgress = (id, v) =>
   setBusy((p) => ({ ...p, [id]: v }));
 
@@ -1109,12 +1125,12 @@ const AlbumDetail = ({ album, onBack, onPlay, currentTrack, isPlaying, variant =
             </> :
 
         <button
-              className={`dl-circle${allBusy ? ' is-busy' : ''}${albumDone ? ' is-done' : ''}`}
+              className={`dl-circle${albumBusy ? ' is-busy' : ''}${albumDone ? ' is-done' : ''}`}
               onClick={(e) => handleDownloadAll(e.currentTarget)}
-              disabled={allBusy || albumDone}
+              disabled={albumBusy || albumDone}
               title={albumDone ? 'Already in your library' : 'Download all'}
               aria-label={albumDone ? 'Already in your library' : 'Download all'}>
-              {albumDone ? <CheckIcon /> : allBusy ? <SpinnerArc /> :
+              {albumDone ? <CheckIcon /> : albumBusy ? <SpinnerArc /> :
           <svg viewBox="0 0 24 24"><path d="M12 3v13M7 11l5 5 5-5M4 20h16" /></svg>}
             </button>
         }
