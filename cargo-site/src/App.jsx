@@ -1506,6 +1506,117 @@ const NowPlayingBar = ({ track, album, isPlaying, phase, minimized, tweaks, onTo
 };
 
 // ─── CARGO PAGE ─────────────────────────────────────────────────────
+// ─── CARGO: OBJEKTE DER STRECKE ─────────────────────────────────────
+// Reihenfolge = Reihenfolge auf der Seite. `side` bestimmt, auf welcher
+// Seite das Objekt sitzt, der Text steht jeweils gegenüber. `lag` steuert,
+// wie stark das Objekt beim Scrollen nachzieht — je größer, desto träger.
+// `width` ist die Breite in Prozent der Spalte.
+// Die Texte sind Beispiele und stehen bewusst noch im Code.
+const CARGO_OBJECTS = [
+{
+  src: '/uploads/cargo-record.webp',
+  alt: 'Atlas phonograph record',
+  side: 'left', lag: 26, width: 78, tilt: -4,
+  caption: 'atlas phonograph record. the oldest one ever found on cargo. the tribes did not play it for pleasure — they knelt around it. sound was the only thing that came from the sky and answered back.'
+},
+{
+  src: '/uploads/cargo-angel.webp',
+  alt: 'Cargo angel',
+  side: 'right', lag: 14, width: 84, tilt: 3,
+  caption: '4394 years old cargo angel. if you see one, you are meant to die — but he will protect you.'
+},
+{
+  src: '/uploads/cargo-pot.webp',
+  alt: 'Atlas pot',
+  side: 'left', lag: 34, width: 34, tilt: 2,
+  caption: 'pot of the atlas sector. crafted by an old civilisation. they buried one with every record, so the music would have something to drink.'
+},
+{
+  src: '/uploads/cargo-mask.webp',
+  alt: 'Tribe mask',
+  side: 'right', lag: 20, width: 62, tilt: -3,
+  caption: 'mask of one of the first tribes in the great desert of atlas, in the hot atlas section. worn only by the one who was allowed to touch the record.'
+},
+{
+  src: '/uploads/cargo-symbol.webp',
+  alt: 'Cargo symbol',
+  side: 'left', lag: 10, width: 58, tilt: 0,
+  caption: 'logo of cargo. scratched into the rock above every listening pit, long before anyone wrote it down.'
+}];
+
+
+// Ein Objekt samt Bildunterschrift. Das Nachziehen läuft über eine eigene
+// Schleife statt über React, damit beim Scrollen nichts neu gerendert wird.
+const CargoObject = ({ item, index }) => {
+  const wrapRef = useRef(null);
+  const imgRef = useRef(null);
+  const textRef = useRef(null);
+
+  useEffect(() => {
+    const scroller = wrapRef.current && wrapRef.current.closest('.page');
+    if (!scroller) return;
+
+    let raf = 0;
+    let objY = 0, objV = 0;      // Position und Tempo des Objekts
+    let textY = 0, textV = 0;
+    let lastScroll = scroller.scrollTop;
+    let velocity = 0;
+    let running = true;
+
+    // Federkonstante und Dämpfung. Die Dämpfung liegt bewusst unter 1,
+    // dadurch schwingt die Feder leicht über und schaukelt sich aus —
+    // das ist das Abprallen, wenn man unten ankommt oder abrupt stoppt.
+    const K = 0.11, DAMP = 0.76;
+
+    const tick = () => {
+      const now = scroller.scrollTop;
+      const delta = now - lastScroll;
+      lastScroll = now;
+      // Geglättete Scroll-Geschwindigkeit — daraus entsteht das Schleifen.
+      velocity += (delta - velocity) * 0.25;
+
+      // Ziel: Das Objekt bleibt um ein Vielfaches der Geschwindigkeit
+      // zurück. Der Text zieht schwächer nach als das Bild, sonst wirkt
+      // die Seite wie Wackelpudding.
+      const targetObj = -velocity * (item.lag / 10);
+      const targetText = -velocity * (item.lag / 26);
+
+      objV = (objV + (targetObj - objY) * K) * DAMP;
+      objY += objV;
+      textV = (textV + (targetText - textY) * K) * DAMP;
+      textY += textV;
+
+      if (imgRef.current) {
+        imgRef.current.style.transform =
+        `translate3d(0, ${objY.toFixed(2)}px, 0) rotate(${item.tilt}deg)`;
+      }
+      if (textRef.current) {
+        textRef.current.style.transform = `translate3d(0, ${textY.toFixed(2)}px, 0)`;
+      }
+      if (running) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => { running = false; cancelAnimationFrame(raf); };
+  }, [item.lag, item.tilt]);
+
+  return (
+    <div className={`cargo-obj cargo-obj-${item.side}`} ref={wrapRef}>
+          <div className="cargo-obj-media" style={{ width: `${item.width}%` }}>
+            <img
+          ref={imgRef}
+          src={item.src}
+          alt={item.alt}
+          loading="lazy"
+          draggable={false}
+          onDragStart={(e) => e.preventDefault()}
+          onContextMenu={(e) => e.preventDefault()} />
+          </div>
+          <div className="cargo-obj-caption" ref={textRef}>{item.caption}</div>
+        </div>);
+
+
+};
+
 const CargoPage = () =>
 <div className="cargo-page page-enter">
         <div className="cargo-section-label">THE LABEL</div>
@@ -1529,15 +1640,33 @@ const CargoPage = () =>
           We exist outside the mainstream — built for artists who move between worlds, genres, and aesthetics without asking permission.<br /><br />
           CARGO releases music, clothing, and visual projects under one roof. Everything is made with intention. Nothing is rushed.
         </div>
-        <div className="cargo-visuals">
-          {['visual 01', 'visual 02', 'visual 03', 'visual 04'].map((v) =>
-    <div key={v} className="cargo-visual-item" style={{
-      background: `linear-gradient(135deg, #0d0d0d, #1a1a1a)`,
-      backgroundImage: `repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(200,64,42,0.03) 3px, rgba(200,64,42,0.03) 6px)`
-    }}>
-              <span>[ {v} ]<br />drop photo here</span>
-            </div>
+        {/* Übergang vom echten Label in die erfundene Welt: Planet und
+            Erzähltext leiten die Objektstrecke ein. */}
+        <div className="cargo-world">
+          <div className="cargo-planet">
+            <img
+        src="/uploads/cargo-planet.webp"
+        alt="Cargo"
+        draggable={false}
+        onDragStart={(e) => e.preventDefault()}
+        onContextMenu={(e) => e.preventDefault()} />
+          </div>
+          <div className="cargo-world-text">
+            Cargo drifts along the forgotten routes of the outer systems,
+            carrying resources, relics, and secrets between distant stars.
+            Its vast industrial surface glows beneath perpetual twilight,
+            earning it the title: The Lifeline of the Frontier.
+          </div>
+        </div>
+
+        <div className="cargo-objects">
+          {CARGO_OBJECTS.map((item, i) =>
+    <CargoObject key={item.src} item={item} index={i} />
     )}
+        </div>
+
+        <div className="cargo-outro">
+          relics recovered from the atlas sector — catalogued by CARGO.
         </div>
       </div>;
 
