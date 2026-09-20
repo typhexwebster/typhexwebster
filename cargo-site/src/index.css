@@ -1173,9 +1173,11 @@
       display: flex;
       flex-direction: column;
       gap: clamp(110px, 20vh, 220px);
-      /* Die Objekte dürfen beim Nachziehen aus ihrer Zeile herausragen,
-         ohne die Seite breiter zu machen. */
-      overflow-x: clip;
+      /* Früher stand hier overflow-x: clip. Das hat den Schein der Platte
+         an der Spaltenkante hart abgeschnitten — sichtbar als schwarze
+         Kante links und rechts. Gegen waagerechtes Scrollen sichert
+         ohnehin schon der Container .page ab, und der endet am
+         Bildschirmrand statt mitten im Bild. */
     }
 
     .cargo-obj {
@@ -1189,11 +1191,15 @@
     .cargo-obj-right .cargo-obj-media { order: 2; }
     .cargo-obj-right .cargo-obj-caption { order: 1; text-align: right; }
 
+    /* Die Scroll-Bewegung sitzt am Container, nicht am einzelnen Bild —
+       so bleibt bei der Platte der ganze Ringstapel beisammen. */
+    .cargo-obj-media {
+      will-change: transform;
+    }
     .cargo-obj-media img {
       width: 100%;
       height: auto;
       display: block;
-      will-change: transform;
       user-select: none;
       -webkit-user-drag: none;
     }
@@ -1278,7 +1284,9 @@
       pointer-events: none;
       z-index: 0;
       opacity: 0;
-      overflow: hidden;
+      /* Kein overflow: hidden — es hat die weich auslaufenden Schleier an
+         der Fensterkante zu einer geraden Kante abgeschnitten. Nach außen
+         begrenzt sie ohnehin der Bildschirm. */
       mix-blend-mode: screen;
     }
     .cargo-light {

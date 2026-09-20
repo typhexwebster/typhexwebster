@@ -1810,7 +1810,12 @@ function useCargoMotion(rootRef) {
 
     const items = nodes.map((el) => ({
       el,
-      media: el.querySelector('.cargo-obj-media img'),
+      // Bewusst der ganze Medien-Container, nicht das erste Bild darin.
+      // Die Platte besteht aus mehreren übereinanderliegenden Bildern —
+      // würde hier nur eines verschoben, risse der Stapel auseinander,
+      // und die Drehung der Platte und die Scroll-Bewegung würden sich
+      // gegenseitig überschreiben.
+      media: el.querySelector('.cargo-obj-media'),
       caption: el.querySelector('.cargo-obj-caption'),
       depth: Number(el.dataset.depth) || 40,
       tilt: Number(el.dataset.tilt) || 0,
