@@ -1771,6 +1771,52 @@
       animation: fadeInLB 0.2s ease;
     }
     @keyframes fadeInLB { from{opacity:0} to{opacity:1} }
+    /* ── BILD MIT LADERING ──
+       Der Ring liegt mittig über der Bildfläche und wächst mit ihr mit:
+       Bei den Covern ist er ein Viertel der Coverbreite, im Vollbild
+       richtet er sich nach der kürzeren Fensterseite. */
+    .pimg {
+      position: relative;
+      display: block;
+    }
+    .pimg-ring {
+      position: absolute;
+      left: 50%; top: 50%;
+      transform: translate(-50%, -50%);
+      aspect-ratio: 1 / 1;
+      pointer-events: none;
+      display: block;
+      animation: pimgIn 0.25s ease-out;
+    }
+    .pimg-ring svg { width: 100%; height: 100%; display: block; }
+    /* Der Ring ist derselbe wie beim Track-Download, nur dünner gezeichnet —
+       sonst wirkt er in dieser Größe klobig. */
+    .pimg-ring .dl-ring-track { stroke-width: 1.1; }
+    .pimg-ring .dl-ring-value { stroke-width: 1.1; }
+    .pimg-ring .dl-spin { stroke: var(--red); stroke-width: 0.9; fill: none; }
+    @keyframes pimgIn { from { opacity: 0; } to { opacity: 1; } }
+
+    /* Im Vollbild muss die Bildfläche die Größe des Bildes annehmen,
+       damit der Ring wirklich über dem Bild sitzt und nicht über dem
+       ganzen Schirm. */
+    .lb-pimg {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .lb-pimg img {
+      max-width: 88vw;
+      max-height: 82vh;
+      object-fit: contain;
+      display: block;
+      box-shadow: 0 0 80px rgba(0,0,0,0.8);
+    }
+    /* Mindestfläche, damit der Ring schon vor dem Bild mittig steht. */
+    .lb-pimg {
+      min-width: min(45vw, 45vh);
+      min-height: min(45vw, 45vh);
+    }
+
     /* Drei Bilder auf einer Schiene, die dem Finger folgt. Die mittlere
        Position ist das aktuelle Bild — daher der Versatz um ein Drittel. */
     .lb-viewport {
@@ -1794,13 +1840,6 @@
       display: flex;
       align-items: center;
       justify-content: center;
-    }
-    .lightbox-img {
-      max-width: 88vw;
-      max-height: 82vh;
-      object-fit: contain;
-      display: block;
-      box-shadow: 0 0 80px rgba(0,0,0,0.8);
     }
     .lightbox-close {
       position: absolute;
@@ -1837,14 +1876,14 @@
        rund 50 Pixel Rand — die Pfeile brauchen aber 72 und schnitten ins
        Bild. Jetzt so weit schmaler, dass sie mit Abstand danebenpassen. */
     @media (min-width: 601px) and (max-width: 1024px) {
-      .lightbox-img { max-width: calc(100vw - 176px); }
+      .lb-pimg img { max-width: calc(100vw - 176px); }
     }
 
     /* Handy: Die Pfeile wandern unter das Bild, mittig zwischen Bildkante
        und Beschriftung. Seitlich bleiben sie, wo sie waren. */
     @media (max-width: 600px) {
       .lb-viewport { bottom: 96px; }
-      .lightbox-img { max-height: calc(82vh - 96px); }
+      .lb-pimg img { max-height: calc(82vh - 96px); }
       .lightbox-arrow {
         top: auto;
         bottom: 54px;

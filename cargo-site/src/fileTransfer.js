@@ -12,9 +12,13 @@
 // onProgress bekommt 0..1, solange die Gesamtgröße bekannt ist.
 // Ist sie es nicht (kein Content-Length), kommt null — der Aufrufer
 // zeigt dann eben keinen Balken.
-export async function fetchWithProgress(url, onProgress) {
+export async function fetchWithProgress(url, onProgress, onType) {
   const res = await fetch(url);
   if (!res.ok) throw new Error('Download fehlgeschlagen (' + res.status + ')');
+
+  // Dateityp durchreichen — Bilder brauchen ihn, um aus den rohen Bytes
+  // wieder ein anzeigbares Bild zu machen.
+  if (onType) onType(res.headers.get('content-type') || '');
 
   const total = Number(res.headers.get('content-length')) || 0;
 

@@ -12,6 +12,7 @@ import * as eqData from './eqData.js';
 import * as downloads from './downloads.js';
 import * as beatMotion from './beatMotion.js';
 import { siteText } from './siteTexts.js';
+import * as imageLoader from './imageLoader.js';
 import { fetchWithProgress, saveBlob, makeZip, safeFilename, extensionFromUrl } from './fileTransfer.js';
 
 
@@ -283,26 +284,89 @@ const EQMini = ({ playing }) => {
 };
 
 
+// ─── BILD MIT LADERING ──────────────────────────────────────────────
+// Zeigt beim Laden denselben Fortschrittsring wie ein Track-Download,
+// nur größer und mitwachsend. Drei Wege, in dieser Reihenfolge:
+//   1. Schon einmal geladen -> sofort da, kein Ring.
+//   2. Selbst geladen -> echter Fortschritt, der Ring füllt sich.
+//   3. Speicher erlaubt das nicht -> ganz normales Bild, der Ring dreht
+//      sich nur, bis es da ist. Ein Bild bleibt nie aus.
+// Der Ring erscheint erst nach kurzer Verzögerung, sonst blitzt er beim
+// Durchwischen bereits geladener Bilder bei jedem Wechsel auf.
+const RING_DELAY = 200;
+
+const ProgressImage = ({ src, alt, className, imgStyle, ringSize = '24%', wrapStyle, onImgLoad }) => {
+  const [url, setUrl] = useState(() => imageLoader.cached(src));
+  const [progress, setProgress] = useState(0);
+  const [ring, setRing] = useState(false);
+  const [direkt, setDirekt] = useState(() => imageLoader.blocked());
+  const [fertig, setFertig] = useState(() => !!imageLoader.cached(src));
+
+  useEffect(() => {
+    let abgemeldet = false;
+    const bereit = imageLoader.cached(src);
+    setUrl(bereit);
+    setFertig(!!bereit);
+    setProgress(0);
+    setRing(false);
+    setDirekt(imageLoader.blocked());
+    if (bereit || !src) return;
+
+    const timer = setTimeout(() => { if (!abgemeldet) setRing(true); }, RING_DELAY);
+
+    if (!imageLoader.blocked()) {
+      imageLoader.load(src, (p) => { if (!abgemeldet && p !== null) setProgress(p); }).
+      then((u) => { if (!abgemeldet) { setUrl(u); setFertig(true); setRing(false); } }).
+      catch(() => { if (!abgemeldet) setDirekt(true); });
+    }
+
+    return () => { abgemeldet = true; clearTimeout(timer); };
+  }, [src]);
+
+  // Im Rückfall lädt das Bild normal; fertig meldet dann das Bild selbst.
+  const quelle = direkt ? src : url;
+
+  return (
+    <div className={`pimg${className ? ' ' + className : ''}`} style={wrapStyle}>
+          {quelle &&
+      <img
+        src={quelle}
+        alt={alt}
+        style={imgStyle}
+        draggable={false}
+        onLoad={(e) => { setFertig(true); setRing(false); if (onImgLoad) onImgLoad(e); }}
+        onDragStart={(e) => e.preventDefault()}
+        onContextMenu={(e) => e.preventDefault()} />
+      }
+          {ring && !fertig &&
+      <span className="pimg-ring" style={{ width: ringSize }}>
+              {direkt ?
+        <SpinnerArc /> :
+        <ProgressRing value={progress} />}
+            </span>
+      }
+        </div>);
+
+
+};
+
 // ─── COVER PLACEHOLDER ──────────────────────────────────────────────
 // COVER_IMAGES -> aus content.js
 
 const CoverPlaceholder = ({ album, size = 280 }) => {
   const imgSrc = COVER_IMAGES[album.id];
   if (imgSrc) {
+    // Cover sind große Flächen — hier lohnt der Ladering am meisten.
     return (
-      <img
+      <ProgressImage
         src={imgSrc}
         alt={album.title}
-        className="protected-cover"
-        draggable={false}
-        onDragStart={(e) => e.preventDefault()}
-        onContextMenu={(e) => e.preventDefault()}
-        style={{
-          width: size, maxWidth: '100%',
-          aspectRatio: '1 / 1', height: 'auto',
-          objectFit: 'cover',
-          display: 'block',
-          flexShrink: 0
+        className="protected-cover-wrap"
+        ringSize="26%"
+        wrapStyle={{ width: size, maxWidth: '100%', aspectRatio: '1 / 1', flexShrink: 0 }}
+        imgStyle={{
+          width: '100%', height: '100%',
+          objectFit: 'cover', display: 'block'
         }} />);
 
 
@@ -459,7 +523,12 @@ const Lightbox = ({ items, index, onIndex, onClose }) => {
             const it = at(o);
             return (
               <div className="lb-slide" key={o}>
-                    <img className="lightbox-img" src={it.src} alt={it.label} draggable={false} />
+                    <ProgressImage
+                  src={it.src}
+                  alt={it.label}
+                  className="lb-pimg"
+                  ringSize="clamp(64px, 13vmin, 130px)"
+                  imgStyle={{}} />
                   </div>);
 
           })}
