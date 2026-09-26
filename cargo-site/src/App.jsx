@@ -2544,21 +2544,32 @@ const App = () => {
   // Zeile einer Seite nicht verdeckt? Statt einen festen Wert zu raten,
   // messen wir die tatsächliche Höhe des Players und geben sie als
   // CSS-Variable weiter. Ohne Player bleibt gar kein toter Raum übrig.
+  const playerSpaceRef = useRef(0);
   useEffect(() => {
-    const messen = () => {
-      let h = 0;
-      if (playerPhase === 'open') {
-        const el = document.querySelector(minimized ? '.np-mini' : '.np-player');
-        if (el) {
-          const r = el.getBoundingClientRect();
-          // Der ausgeklappte Player ist ein Verlauf mit viel Luft oben —
-          // der untere, tatsächlich deckende Teil zählt.
-          h = Math.min(r.height, window.innerHeight * 0.34) + 20;
-        }
-      }
+    const setzen = (h) => {
+      playerSpaceRef.current = h;
       document.documentElement.style.setProperty('--player-space', `${Math.round(h)}px`);
     };
-    // Nach dem Aus- und Einklappen einmal nachmessen, die Bewegung dauert.
+
+    const messen = () => {
+      if (playerPhase !== 'open') { setzen(0); return; }
+
+      // Eingeklappt NICHT neu messen: Der Platz bleibt, wie er im
+      // ausgeklappten Zustand war. Sonst schrumpft die Seite beim
+      // Einklappen und der ganze Inhalt rutscht nach oben.
+      if (minimized) return;
+
+      // Gemessen wird der Inhalt des Players — Knöpfe, Titel, Regler —,
+      // nicht sein Kasten. Der ist ein Verlauf mit sehr viel durch-
+      // sichtiger Luft nach oben; danach zu rechnen ergab weit mehr
+      // Leerraum, als der Player tatsächlich verdeckt.
+      const inner = document.querySelector('.np-player .np-inner');
+      if (!inner) return;
+      const h = inner.getBoundingClientRect().height;
+      if (h > 0) setzen(h + 36);   // etwas Luft zwischen Text und Player
+    };
+
+    // Zweimal messen: sofort und nachdem die Einblendbewegung durch ist.
     messen();
     const t = setTimeout(messen, 420);
     window.addEventListener('resize', messen);
