@@ -464,6 +464,10 @@ const Lightbox = ({ items, index, onIndex, onClose }) => {
 
   const down = (e) => {
     if (items.length < 2 || busyRef.current) return;
+    // Auf dem Video selbst nicht wischen — sonst käme man an die
+    // Abspielsteuerung nicht heran. Daneben, auf der schwarzen Fläche,
+    // funktioniert das Wischen weiterhin.
+    if (e.target && e.target.tagName === 'VIDEO') return;
     const s = stateRef.current;
     s.dragging = true; s.moved = false; s.locked = null;
     s.startX = s.lastX = e.clientX; s.startY = e.clientY;
@@ -523,12 +527,26 @@ const Lightbox = ({ items, index, onIndex, onClose }) => {
             const it = at(o);
             return (
               <div className="lb-slide" key={o}>
-                    <ProgressImage
+                    {it.type === 'video' ?
+                // Echter Player mit Steuerung und Ton. Nur das mittlere,
+                // sichtbare Video spielt von selbst — die Nachbarn liegen
+                // bereit, sollen aber nicht im Hintergrund mitlaufen.
+                <video
+                  className="lb-video"
+                  src={it.src}
+                  controls
+                  playsInline
+                  preload="metadata"
+                  autoPlay={o === 0}
+                  loop /> :
+
+                <ProgressImage
                   src={it.src}
                   alt={it.label}
                   className="lb-pimg"
                   ringSize="clamp(64px, 13vmin, 130px)"
                   imgStyle={{}} />
+                }
                   </div>);
 
           })}
@@ -612,7 +630,22 @@ const MediaPanel = ({ open, onClose }) => {
                 <div key={item.id} className="media-cell" onClick={() => item.src && openLightbox(imgIdx)} style={{ cursor: item.src ? 'pointer' : 'default' }}>
                       <div className="media-cell-overlay" />
                       {item.src ?
-                  <img src={item.src} alt={item.label} style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', inset: 0 }} /> :
+                  item.type === 'video' ?
+                  // Stumme Vorschau in Schleife. Ein Video-Element statt
+                  // eines Bildes ist hier Pflicht: Nur so übernimmt der
+                  // Hardware-Decoder, und nur so läuft es in Echtzeit.
+                  <video
+                    src={item.src}
+                    className="media-cell-media"
+                    muted
+                    loop
+                    autoPlay
+                    playsInline
+                    preload="metadata"
+                    disablePictureInPicture /> :
+
+                  <img src={item.src} alt={item.label} className="media-cell-media" /> :
+
 
                   <div className="media-cell-icon">
                           {item.type === 'image' ? <ImageIcon /> : <VideoIcon />}
