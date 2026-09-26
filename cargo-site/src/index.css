@@ -1741,21 +1741,6 @@
     }
     .media-cell:hover .media-cell-label { opacity: 1; }
 
-    .media-add-btn {
-      grid-column: 1 / -1;
-      background: transparent;
-      border: 1px dashed #222;
-      padding: 20px;
-      font-family: var(--mono);
-      font-size: 10px;
-      letter-spacing: 0.3em;
-      color: #333;
-      cursor: pointer;
-      text-transform: uppercase;
-      transition: border-color 0.2s, color 0.2s;
-    }
-    .media-add-btn:hover { border-color: var(--red); color: var(--red); }
-
     .media-empty {
       text-align: center;
       padding: 60px 20px;
@@ -1786,6 +1771,30 @@
       animation: fadeInLB 0.2s ease;
     }
     @keyframes fadeInLB { from{opacity:0} to{opacity:1} }
+    /* Drei Bilder auf einer Schiene, die dem Finger folgt. Die mittlere
+       Position ist das aktuelle Bild — daher der Versatz um ein Drittel. */
+    .lb-viewport {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      /* Verhindert, dass das Handy beim Wischen die Seite mitzieht. */
+      touch-action: none;
+    }
+    .lb-track {
+      display: flex;
+      width: 300vw;
+      transform: translate3d(calc(-100% / 3), 0, 0);
+      will-change: transform;
+    }
+    .lb-slide {
+      width: 100vw;
+      flex: 0 0 100vw;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
     .lightbox-img {
       max-width: 88vw;
       max-height: 82vh;
@@ -1820,6 +1829,27 @@
       position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%);
       font-family: var(--mono); font-size: 10px; letter-spacing: 0.3em;
       color: #444; text-transform: uppercase; white-space: nowrap;
+      z-index: 2;
+    }
+    .lightbox-close, .lightbox-arrow { z-index: 2; }
+
+    /* Tablet: Das Bild darf 88 % der Breite einnehmen, dadurch blieben nur
+       rund 50 Pixel Rand — die Pfeile brauchen aber 72 und schnitten ins
+       Bild. Jetzt so weit schmaler, dass sie mit Abstand danebenpassen. */
+    @media (min-width: 601px) and (max-width: 1024px) {
+      .lightbox-img { max-width: calc(100vw - 176px); }
+    }
+
+    /* Handy: Die Pfeile wandern unter das Bild, mittig zwischen Bildkante
+       und Beschriftung. Seitlich bleiben sie, wo sie waren. */
+    @media (max-width: 600px) {
+      .lb-viewport { bottom: 96px; }
+      .lightbox-img { max-height: calc(82vh - 96px); }
+      .lightbox-arrow {
+        top: auto;
+        bottom: 54px;
+        transform: none;
+      }
     }
 
     /* ── NOW PLAYING PLAYER (responsive, slides up / down) ── */

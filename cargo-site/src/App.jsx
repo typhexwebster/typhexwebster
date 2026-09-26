@@ -342,11 +342,157 @@ const CoverPlaceholder = ({ album, size = 280 }) => {
 
 };
 
+// ─── BILDANSICHT MIT WISCHEN ────────────────────────────────────────
+// Drei Bilder liegen nebeneinander auf einer Schiene: vorheriges,
+// aktuelles, nächstes. Die Schiene steht um genau eine Bildbreite nach
+// links versetzt, sodass das aktuelle Bild mittig sitzt.
+//
+// Beim Ziehen folgt die Schiene dem Finger eins zu eins — das Nachbarbild
+// schiebt sich dadurch schon am Rand herein. Beim Loslassen entscheidet
+// die zurückgelegte Strecke oder die Wurfgeschwindigkeit, ob es weiter-
+// rastet oder zurückfedert. Danach springt die Schiene ohne Animation in
+// die Mitte zurück und der Index wandert weiter; sichtbar bleibt das
+// gleiche Bild, es wirkt also nahtlos.
+const SWIPE_EASE = 'transform 0.34s cubic-bezier(0.22, 0.61, 0.36, 1)';
+
+const Lightbox = ({ items, index, onIndex, onClose }) => {
+  const trackRef = useRef(null);
+  const stateRef = useRef({ dragging: false, startX: 0, startY: 0, dx: 0, moved: false, lastX: 0, lastT: 0, v: 0, locked: null });
+  const busyRef = useRef(false);
+
+  const wrap = (i) => (i % items.length + items.length) % items.length;
+  const at = (offset) => items[wrap(index + offset)];
+
+  const setTrack = (px, animate) => {
+    const el = trackRef.current;
+    if (!el) return;
+    el.style.transition = animate ? SWIPE_EASE : 'none';
+    el.style.transform = `translate3d(calc(-100% / 3 + ${px}px), 0, 0)`;
+  };
+
+  // Nach der Animation eine Position weiterschalten und die Schiene ohne
+  // sichtbaren Sprung wieder mittig setzen.
+  const commit = (dir) => {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    const width = window.innerWidth;
+    setTrack(-dir * width, true);
+    setTimeout(() => {
+      onIndex(wrap(index + dir));
+      setTrack(0, false);
+      busyRef.current = false;
+    }, 340);
+  };
+
+  const go = (dir) => { if (items.length > 1) commit(dir); };
+
+  useEffect(() => { setTrack(0, false); }, [index]);
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'ArrowLeft') go(-1);
+      if (e.key === 'ArrowRight') go(1);
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
+
+  const down = (e) => {
+    if (items.length < 2 || busyRef.current) return;
+    const s = stateRef.current;
+    s.dragging = true; s.moved = false; s.locked = null;
+    s.startX = s.lastX = e.clientX; s.startY = e.clientY;
+    s.dx = 0; s.v = 0; s.lastT = performance.now();
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch (err) {}
+  };
+
+  const move = (e) => {
+    const s = stateRef.current;
+    if (!s.dragging) return;
+    const dx = e.clientX - s.startX;
+    const dy = e.clientY - s.startY;
+    // Erst ab einer kleinen Strecke entscheiden, ob es ein Wischen ist.
+    if (s.locked === null && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
+      s.locked = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
+    }
+    if (s.locked !== 'x') return;
+    const now = performance.now();
+    const dt = Math.max(1, now - s.lastT);
+    s.v = (e.clientX - s.lastX) / dt * 1000;   // Pixel pro Sekunde
+    s.lastX = e.clientX; s.lastT = now;
+    s.dx = dx; s.moved = true;
+    setTrack(dx, false);
+  };
+
+  const up = (e) => {
+    const s = stateRef.current;
+    if (!s.dragging) return;
+    s.dragging = false;
+    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch (err) {}
+
+    if (!s.moved) {
+      // Kein Ziehen, also ein Tipp: neben dem Bild schließt die Ansicht.
+      if (e.target && e.target.tagName !== 'IMG') onClose();
+      return;
+    }
+    const width = window.innerWidth;
+    const weit = Math.abs(s.dx) > width * 0.2;
+    const schnell = Math.abs(s.v) > 500;
+    if (weit || schnell) commit(s.dx < 0 ? 1 : -1);else
+    setTrack(0, true);
+  };
+
+  const cur = items[index];
+
+  return (
+    <div className="lightbox">
+          <div
+        className="lb-viewport"
+        onPointerDown={down}
+        onPointerMove={move}
+        onPointerUp={up}
+        onPointerCancel={up}>
+
+            <div className="lb-track" ref={trackRef}>
+              {[-1, 0, 1].map((o) => {
+            const it = at(o);
+            return (
+              <div className="lb-slide" key={o}>
+                    <img className="lightbox-img" src={it.src} alt={it.label} draggable={false} />
+                  </div>);
+
+          })}
+            </div>
+          </div>
+
+          <button className="lightbox-close" onClick={onClose} aria-label="Close">
+            <svg viewBox="0 0 24 24" fill="none"><line x1="4" y1="4" x2="20" y2="20" /><line x1="20" y1="4" x2="4" y2="20" /></svg>
+          </button>
+
+          {items.length > 1 &&
+      <>
+              <button className="lightbox-arrow prev" onClick={() => go(-1)} aria-label="Previous image">
+                <svg viewBox="0 0 24 24"><polyline points="15,18 9,12 15,6" /></svg>
+              </button>
+              <button className="lightbox-arrow next" onClick={() => go(1)} aria-label="Next image">
+                <svg viewBox="0 0 24 24"><polyline points="9,18 15,12 9,6" /></svg>
+              </button>
+            </>
+      }
+          <div className="lightbox-label">{index + 1} / {items.length} — {cur.label}</div>
+        </div>);
+
+
+};
+
 // ─── MEDIA PANEL ────────────────────────────────────────────────────
 const MediaPanel = ({ open, onClose }) => {
   const [tab, setTab] = React.useState('images');
   const [lightboxIdx, setLightboxIdx] = React.useState(null);
-  const [items, setItems] = React.useState(GALLERY);
+  // Inhalte kommen aus dem Admin. Früher ließen sich hier Platzhalter
+  // anlegen — das hatte keinen Effekt und ist raus.
+  const items = GALLERY;
 
   const ImageIcon = () =>
   <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" /></svg>;
@@ -354,29 +500,13 @@ const MediaPanel = ({ open, onClose }) => {
   const VideoIcon = () =>
   <svg viewBox="0 0 24 24"><rect x="2" y="4" width="15" height="16" rx="2" /><path d="M17 8l5-3v14l-5-3V8z" /></svg>;
 
-  const PlusIcon = () =>
-  <svg viewBox="0 0 24 24" stroke="#444" strokeWidth="1.2" fill="none" style={{ width: 20, height: 20 }}><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>;
-
-
   const currentItems = items[tab];
   const imgItems = currentItems.filter((i) => i.src);
 
   const openLightbox = (idx) => setLightboxIdx(idx);
   const closeLightbox = () => setLightboxIdx(null);
-  const lbPrev = () => setLightboxIdx((i) => (i - 1 + imgItems.length) % imgItems.length);
-  const lbNext = () => setLightboxIdx((i) => (i + 1) % imgItems.length);
-
-  // keyboard nav
-  React.useEffect(() => {
-    if (lightboxIdx === null) return;
-    const onKey = (e) => {
-      if (e.key === 'ArrowLeft') lbPrev();
-      if (e.key === 'ArrowRight') lbNext();
-      if (e.key === 'Escape') closeLightbox();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [lightboxIdx]);
+  // Blättern und Tastatur liegen jetzt in Lightbox, damit Wischen und
+  // Pfeile denselben Weg nehmen und dieselbe Animation auslösen.
 
   return (
     <>
@@ -403,7 +533,7 @@ const MediaPanel = ({ open, onClose }) => {
             <div className="media-panel-body">
               {currentItems.length === 0 ?
           <div className="media-empty">
-                  <p>No {tab} yet.<br />Click + to add</p>
+                  <p>No {tab} yet.</p>
                 </div> :
 
           <div className="media-grid">
@@ -424,47 +554,17 @@ const MediaPanel = ({ open, onClose }) => {
                     </div>);
 
             })}
-                  <button
-              className="media-add-btn"
-              onClick={() => {
-                const id = Date.now();
-                const label = `${tab.slice(0, -1)} 0${currentItems.length + 1}`;
-                setItems((prev) => ({
-                  ...prev,
-                  [tab]: [...prev[tab], { id, type: tab.slice(0, -1), label }]
-                }));
-              }}>
-              
-                    <PlusIcon /> &nbsp; ADD {tab.slice(0, -1).toUpperCase()}
-                  </button>
                 </div>
           }
             </div>
           </div>
 
         {lightboxIdx !== null && imgItems[lightboxIdx] &&
-      <div className="lightbox" onClick={closeLightbox}>
-            <img
-          className="lightbox-img"
-          src={imgItems[lightboxIdx].src}
-          alt={imgItems[lightboxIdx].label}
-          onClick={(e) => e.stopPropagation()} />
-        
-            <button className="lightbox-close" onClick={closeLightbox}>
-              <svg viewBox="0 0 24 24" fill="none"><line x1="4" y1="4" x2="20" y2="20" /><line x1="20" y1="4" x2="4" y2="20" /></svg>
-            </button>
-            {imgItems.length > 1 &&
-        <>
-                <button className="lightbox-arrow prev" onClick={(e) => {e.stopPropagation();lbPrev();}}>
-                  <svg viewBox="0 0 24 24"><polyline points="15,18 9,12 15,6" /></svg>
-                </button>
-                <button className="lightbox-arrow next" onClick={(e) => {e.stopPropagation();lbNext();}}>
-                  <svg viewBox="0 0 24 24"><polyline points="9,18 15,12 9,6" /></svg>
-                </button>
-              </>
-        }
-            <div className="lightbox-label">{lightboxIdx + 1} / {imgItems.length} — {imgItems[lightboxIdx].label}</div>
-          </div>
+      <Lightbox
+        items={imgItems}
+        index={lightboxIdx}
+        onIndex={setLightboxIdx}
+        onClose={closeLightbox} />
       }
       </>);
 
