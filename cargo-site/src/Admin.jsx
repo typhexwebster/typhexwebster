@@ -233,6 +233,7 @@ function AlbumEditor({ pw, album, tracks, analysedIds, onClose, onSaved, toast }
         availability: a.availability, apple_url: a.apple_url || null, spotify_url: a.spotify_url || null,
         description: a.description, duration: a.duration, cover_path: a.cover_path,
         copyright: a.copyright || null,
+        release_date: a.release_date || null,
         download_format: a.download_format || 'M4A (AAC)',
         in_library: !!a.in_library, published: a.published !== false,
         sort_order: Number(a.sort_order) || 0,
@@ -284,6 +285,12 @@ function AlbumEditor({ pw, album, tracks, analysedIds, onClose, onSaved, toast }
         onChange={(v) => set('copyright', v)}
         placeholder="© CARGO 2026. All rights reserved."
         hint="Shown underneath the track list. Leave empty to hide the line completely." />
+      <Field
+        label="Release date"
+        value={a.release_date}
+        onChange={(v) => set('release_date', v)}
+        placeholder="28 August 2026"
+        hint="Grey line below the copyright. Free text — leave empty to hide it." />
       <Field label="Description" value={a.description} onChange={(v) => set('description', v)} textarea />
 
       <div style={{ ...S.row, marginTop: 10 }}>

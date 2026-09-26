@@ -72,7 +72,8 @@ export async function loadContent() {
       availability: a.availability || '',
       availabilityLinks: links,
       description: a.description || '',
-      copyright: a.copyright || '',   // leer -> es wird keine Zeile angezeigt
+      copyright: a.copyright || '',     // leer -> es wird keine Zeile angezeigt
+      releaseDate: a.release_date || '', // dito, steht unter dem Copyright
       totalTracks: tracks.length,
       duration: a.duration || '',
       // Feste Ersatzfarbe für Alben ohne Cover. Im Admin nicht mehr

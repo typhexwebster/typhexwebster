@@ -59,6 +59,9 @@
       inset: 0;
       overflow-y: auto;
       overflow-x: hidden;
+      /* Wird von App.jsx gesetzt: so hoch wie der Player gerade wirklich
+         ist, und 0 solange keiner offen ist. */
+      padding-bottom: var(--player-space, 0px);
     }
 
     /* Music library: locked to the viewport, no vertical scrolling. */
@@ -481,7 +484,9 @@
 
     /* ALBUM DETAIL */
     .album-detail {
-      padding: 40px 24px 160px;
+      /* Unten nur noch normaler Seitenabstand. Den Platz für den Player
+         steuert --player-space am Scroll-Container, siehe .page. */
+      padding: 40px 24px 40px;
       max-width: 480px;
       margin: 0 auto;
     }
@@ -489,7 +494,7 @@
     @media (min-width: 768px) {
       .album-detail {
         max-width: 1400px;
-        padding: 40px 48px 160px;
+        padding: 40px 48px 48px;
       }
       /* keep the cover + title block centered at its mobile size */
       .album-detail .detail-hero {
@@ -997,10 +1002,23 @@
 
     .detail-meta {
       font-family: var(--mono);
-      font-size: 11px;
-      letter-spacing: 0.1em;
       color: var(--red);
       margin-top: 20px;
+    }
+    /* Jede Zeile bleibt eine Zeile. Wird sie auf einem schmalen Gerät zu
+       lang, schrumpft die Schrift ein wenig, statt umzubrechen — so
+       bleibt der Aufbau auf jedem Bildschirm derselbe. */
+    .detail-meta-line,
+    .detail-meta-date {
+      font-size: clamp(8.5px, 2.6vw, 11px);
+      letter-spacing: 0.1em;
+      white-space: nowrap;
+      line-height: 1.9;
+    }
+    /* Eine Leerzeile Abstand, danach das Datum in Grau. */
+    .detail-meta-date {
+      color: #6e6a66;
+      margin-top: 1.9em;
     }
 
     /* BOTTOM PLAYER */

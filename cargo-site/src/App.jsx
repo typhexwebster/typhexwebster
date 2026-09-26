@@ -1381,8 +1381,21 @@ const AlbumDetail = ({ album, onBack, onPlay, currentTrack, isPlaying, variant =
 
           {/* Copyright kommt aus der Albumbearbeitung im Admin.
               Ist das Feld leer, erscheint auch kein Trennpunkt. */}
+          {/* Jede Angabe auf ihrer eigenen Zeile, ohne Umbruch — auch auf
+              breiten Schirmen, wo sie nebeneinander Platz hätten. Das
+              Datum steht mit einer Leerzeile Abstand darunter, in Grau.
+              Copyright und Datum kommen aus der Albumbearbeitung; sind
+              sie leer, fehlt die Zeile ganz. */}
           <div className="detail-meta">
-            {isLibrary ? visibleTracks.length : album.totalTracks} Songs, {album.duration}{album.copyright ? ' · ' + album.copyright : ''}
+            <div className="detail-meta-line">
+              {isLibrary ? visibleTracks.length : album.totalTracks} Songs, {album.duration}
+            </div>
+            {album.copyright &&
+        <div className="detail-meta-line">{album.copyright}</div>
+        }
+            {album.releaseDate &&
+        <div className="detail-meta-date">{album.releaseDate}</div>
+        }
           </div>
 
           {descOpen && ReactDOM.createPortal(
@@ -2526,6 +2539,31 @@ const App = () => {
 
   const showHeader = screen !== 'landing';
   const showPlayer = currentTrack !== null;
+
+  // Wie viel Platz muss unten freibleiben, damit der Player die letzte
+  // Zeile einer Seite nicht verdeckt? Statt einen festen Wert zu raten,
+  // messen wir die tatsächliche Höhe des Players und geben sie als
+  // CSS-Variable weiter. Ohne Player bleibt gar kein toter Raum übrig.
+  useEffect(() => {
+    const messen = () => {
+      let h = 0;
+      if (playerPhase === 'open') {
+        const el = document.querySelector(minimized ? '.np-mini' : '.np-player');
+        if (el) {
+          const r = el.getBoundingClientRect();
+          // Der ausgeklappte Player ist ein Verlauf mit viel Luft oben —
+          // der untere, tatsächlich deckende Teil zählt.
+          h = Math.min(r.height, window.innerHeight * 0.34) + 20;
+        }
+      }
+      document.documentElement.style.setProperty('--player-space', `${Math.round(h)}px`);
+    };
+    // Nach dem Aus- und Einklappen einmal nachmessen, die Bewegung dauert.
+    messen();
+    const t = setTimeout(messen, 420);
+    window.addEventListener('resize', messen);
+    return () => { clearTimeout(t); window.removeEventListener('resize', messen); };
+  }, [playerPhase, minimized, currentTrack]);
   const hamburgerOpen = screen === 'hub';
   // Leere Library-Übersicht (nicht die Detailansicht eines Albums) —
   // steuert unten die Scrollsperre.
