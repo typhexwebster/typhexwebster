@@ -1781,6 +1781,10 @@
     .lightbox {
       position: fixed;
       inset: 0;
+      /* Auf dem iPhone zählt Safaris untere Leiste je nach Zustand mit
+         oder nicht — dadurch saß der Inhalt mal höher, mal tiefer als die
+         Mitte. dvh rechnet mit der tatsächlich sichtbaren Höhe. */
+      height: 100dvh;
       background: rgba(0,0,0,0.95);
       z-index: 300;
       display: flex;
@@ -1904,7 +1908,12 @@
     .lightbox-label {
       position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%);
       font-family: var(--mono); font-size: 10px; letter-spacing: 0.3em;
-      color: #444; text-transform: uppercase; white-space: nowrap;
+      color: #444; text-transform: uppercase;
+      /* Stand vorher auf „nicht umbrechen“ — lange Bildnamen wurden
+         dadurch einfach abgeschnitten. Jetzt bricht die Zeile um. */
+      max-width: 88vw;
+      text-align: center;
+      line-height: 1.9;
       z-index: 2;
     }
     .lightbox-close, .lightbox-arrow { z-index: 2; }
@@ -1945,8 +1954,10 @@
         justify-content: space-between;
         width: 100%;
         flex: 0 0 auto;
-        /* gleich viel Luft nach oben wie nach unten */
-        padding: 20px 24px;
+        /* Gleich viel Luft nach oben wie nach unten. Wird das Fenster
+           niedrig, rücken die Pfeile näher heran — das Bild behält dafür
+           seine Größe. */
+        padding: clamp(18px, 5.5vh, 44px) 24px;
       }
       .lightbox-arrow {
         position: static;
@@ -1959,7 +1970,11 @@
         position: static;
         transform: none;
         bottom: auto; left: auto;
-        padding-bottom: 24px;
+        /* Kein zusätzlicher Abstand nach unten: Der Abstand zu den Pfeilen
+           kommt aus deren Zeile, und der Block als Ganzes wird mittig
+           gesetzt. Ein Rand hier würde ihn wieder nach oben schieben. */
+        padding: 0 24px;
+        max-width: 100%;
       }
     }
 
