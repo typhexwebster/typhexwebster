@@ -376,6 +376,16 @@
       justify-content: center;
       align-items: center;
       overflow: hidden;
+      /* Weiches Hoch- und Zurückgleiten, wenn der Player kommt oder geht.
+         Bewusst langsamer als das Karussell, damit man die Bewegung als
+         eigene Geste wahrnimmt und nicht als Ruck. */
+      transition: transform 0.7s cubic-bezier(0.22, 0.61, 0.36, 1);
+    }
+    .carousel-dots {
+      transition: margin-top 0.7s cubic-bezier(0.22, 0.61, 0.36, 1);
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .music-gallery, .carousel-dots { transition: none; }
     }
 
     .gallery-header {

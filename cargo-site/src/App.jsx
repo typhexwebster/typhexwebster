@@ -835,7 +835,7 @@ const HubPage = ({ onNavigate, tweaks }) => {
 };
 
 // ─── MUSIC GALLERY ──────────────────────────────────────────────────
-const MusicGallery = ({ active, onActiveChange, onSelectAlbum, tweaks }) => {
+const MusicGallery = ({ active, onActiveChange, onSelectAlbum, tweaks, playerOpen }) => {
   const [vw, setVw] = useState(() => typeof window !== 'undefined' ? window.innerWidth : 800);
   const [vh, setVh] = useState(() => typeof window !== 'undefined' ? window.innerHeight : 600);
   const [ready, setReady] = useState(false);
@@ -945,8 +945,31 @@ const MusicGallery = ({ active, onActiveChange, onSelectAlbum, tweaks }) => {
   const centreOffset = vw / 2 - CARD / 2;
   const baseTranslate = centreOffset - active * (CARD + GAP);
 
+  // ── Platz schaffen, wenn der Player offen ist ──────────────────────
+  // Das Cover behält seine Größe. Der Platz kommt erstens aus dem engeren
+  // Zeilenabstand unter dem Titel und zweitens daraus, dass der ganze
+  // Block ein Stück nach oben rückt.
+  //
+  // Wie weit er darf, rechnen wir aus, statt es zu raten: Der Block sitzt
+  // mittig, oben und unten ist also gleich viel Luft. Wir verschieben
+  // höchstens so weit, dass oben noch ein Rest bleibt — sonst würde das
+  // Cover unter den Kopfbereich rutschen. Auf großen Bildschirmen reicht
+  // das, um den Player ganz freizuhalten; auf kleinen Handys bleibt es
+  // bewusst bei dem, was ohne Beschneiden möglich ist.
+  const DOTS_GAP = playerOpen ? 12 : 32;
+  const belowBlock = BELOW_BLOCK - (32 - DOTS_GAP);
+  const containerH = vh - HEADER_H;
+  const contentH = PAD_V + CARD + TITLE_BLOCK + belowBlock;
+  const slack = Math.max(0, (containerH - contentH) / 2);
+  const playerSpace = Math.max(146, Math.min(vh * 0.17, 178));
+  const lift = playerOpen ?
+  Math.round(Math.max(0, Math.min(playerSpace - slack, slack - 8))) :
+  0;
+
   return (
-    <div className="music-gallery gallery-fade">
+    <div
+      className="music-gallery gallery-fade"
+      style={{ transform: `translateY(${-lift}px)` }}>
           <div
         className="album-carousel-wrap"
         ref={wrapRef}
@@ -1011,7 +1034,10 @@ const MusicGallery = ({ active, onActiveChange, onSelectAlbum, tweaks }) => {
         }
           </div>
 
-          <div className="carousel-dots">
+          {/* Bei offenem Player rücken die Punkte so dicht an die Infozeile
+              wie die Infozeile an den Titel — gleicher Abstand, ruhiger
+              Rhythmus, und es wird Platz frei. */}
+          <div className="carousel-dots" style={{ marginTop: DOTS_GAP }}>
             {ALBUMS.map((_, i) =>
         <div key={i} className={`dot ${i === active ? 'active' : ''}`} onClick={() => goTo(i)} />
         )}
@@ -2597,7 +2623,7 @@ const App = () => {
           {screen === 'music' &&
       <div className={`main-page ${selectedAlbum ? 'page' : 'page page-locked'}`}>
               {!selectedAlbum ?
-        <MusicGallery active={musicActive} onActiveChange={setMusicActive} onSelectAlbum={(a) => setSelectedAlbum(a)} tweaks={tweaks} /> :
+        <MusicGallery active={musicActive} onActiveChange={setMusicActive} onSelectAlbum={(a) => setSelectedAlbum(a)} tweaks={tweaks} playerOpen={playerPhase === 'open'} /> :
         <AlbumDetail
           album={selectedAlbum}
           onBack={() => setSelectedAlbum(null)}
