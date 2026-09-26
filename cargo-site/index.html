@@ -8,12 +8,22 @@
        die Seite diesen Titel selbst neu (siehe App.jsx, PAGE_TITLES). -->
   <title>TYPHEX WEBSTER — CARGO</title>
 
+  <!-- Eigentumsnachweis für die Google Search Console. Muss stehen bleiben,
+       Google prüft die Zeile auch später gelegentlich nach. -->
+  <meta name="google-site-verification" content="Kdklzt6cO6B8teXKCRjR12bB_CfP3EmXDbaaubY8-F0" />
+
   <!-- Der Text, den Google und andere unter dem Link anzeigen. -->
   <meta name="description" content="The Official Typhex Webster website and store. Music, Art, Video, Shop." />
 
-  <!-- Symbol im Tab und auf dem Startbildschirm. Bewusst freigestellt,
-       ohne Hintergrund. -->
-  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+  <!-- Symbol im Tab, in der Google-Suche und auf dem Startbildschirm.
+       Bewusst freigestellt, ohne Hintergrund.
+       Google nimmt nur Symbole an, deren Kantenlänge ein Vielfaches von 48
+       ist, und sucht zuerst nach /favicon.ico. Deshalb steht die .ico ganz
+       oben und enthält gleich mehrere Größen in einer Datei. -->
+  <link rel="icon" href="/favicon.ico" sizes="any" />
+  <link rel="icon" type="image/png" sizes="48x48" href="/icon-48.png" />
+  <link rel="icon" type="image/png" sizes="96x96" href="/icon-96.png" />
+  <link rel="icon" type="image/png" sizes="144x144" href="/icon-144.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
   <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png" />
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
@@ -23,8 +33,10 @@
   <!-- Vorschau beim Teilen (WhatsApp, Discord, Instagram, Facebook …).
        Das Bild ist 1200 × 630 px. Zum Austauschen: eine neue Datei unter
        public/share-card.jpg ablegen, sonst nichts. -->
+  <!-- og:site_name steht hier bewusst NICHT. Apple (iMessage) streicht den
+       Namen der Website aus dem Titel heraus, wenn beides dasselbe ist —
+       dann blieb in der Vorschau nur noch "CARGO" übrig. -->
   <meta property="og:type" content="website" />
-  <meta property="og:site_name" content="TYPHEX WEBSTER — CARGO" />
   <meta property="og:title" content="TYPHEX WEBSTER — CARGO" />
   <meta property="og:description" content="The Official Typhex Webster website and store. Music, Art, Video, Shop." />
   <meta property="og:url" content="https://typhexwebster.com/" />
