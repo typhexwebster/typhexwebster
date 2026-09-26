@@ -2544,37 +2544,21 @@ const App = () => {
   // Zeile einer Seite nicht verdeckt? Statt einen festen Wert zu raten,
   // messen wir die tatsächliche Höhe des Players und geben sie als
   // CSS-Variable weiter. Ohne Player bleibt gar kein toter Raum übrig.
-  const playerSpaceRef = useRef(0);
+  // Bewusst KEIN Messen mehr. Gemessene Werte schwanken um ein paar Pixel,
+  // je nachdem wann man misst — und jede Abweichung verschiebt den Inhalt
+  // sichtbar, weil sich der Abstand unter der Seite ändert. Deshalb ein
+  // fester Wert, der nur davon abhängt, OB ein Player offen ist, nicht wie
+  // groß er gerade dargestellt wird. Ein- und Ausklappen rührt ihn nicht an.
+  //
+  // Die Spanne deckt den Inhalt des Players ab: Knopfreihe, Titel, Regler
+  // und Zeiten, dazu etwas Luft nach oben.
+  const PLAYER_SPACE = 'clamp(146px, 17vh, 178px)';
   useEffect(() => {
-    const setzen = (h) => {
-      playerSpaceRef.current = h;
-      document.documentElement.style.setProperty('--player-space', `${Math.round(h)}px`);
-    };
-
-    const messen = () => {
-      if (playerPhase !== 'open') { setzen(0); return; }
-
-      // Eingeklappt NICHT neu messen: Der Platz bleibt, wie er im
-      // ausgeklappten Zustand war. Sonst schrumpft die Seite beim
-      // Einklappen und der ganze Inhalt rutscht nach oben.
-      if (minimized) return;
-
-      // Gemessen wird der Inhalt des Players — Knöpfe, Titel, Regler —,
-      // nicht sein Kasten. Der ist ein Verlauf mit sehr viel durch-
-      // sichtiger Luft nach oben; danach zu rechnen ergab weit mehr
-      // Leerraum, als der Player tatsächlich verdeckt.
-      const inner = document.querySelector('.np-player .np-inner');
-      if (!inner) return;
-      const h = inner.getBoundingClientRect().height;
-      if (h > 0) setzen(h + 36);   // etwas Luft zwischen Text und Player
-    };
-
-    // Zweimal messen: sofort und nachdem die Einblendbewegung durch ist.
-    messen();
-    const t = setTimeout(messen, 420);
-    window.addEventListener('resize', messen);
-    return () => { clearTimeout(t); window.removeEventListener('resize', messen); };
-  }, [playerPhase, minimized, currentTrack]);
+    document.documentElement.style.setProperty(
+      '--player-space',
+      playerPhase === 'open' ? PLAYER_SPACE : '0px'
+    );
+  }, [playerPhase]);
   const hamburgerOpen = screen === 'hub';
   // Leere Library-Übersicht (nicht die Detailansicht eines Albums) —
   // steuert unten die Scrollsperre.
