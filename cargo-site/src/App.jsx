@@ -557,15 +557,19 @@ const Lightbox = ({ items, index, onIndex, onClose }) => {
             <svg viewBox="0 0 24 24" fill="none"><line x1="4" y1="4" x2="20" y2="20" /><line x1="20" y1="4" x2="4" y2="20" /></svg>
           </button>
 
+          {/* Die Pfeile stecken in einer eigenen Zeile. Am Computer löst
+              sich diese Zeile auf (display: contents), dort bleiben die
+              Pfeile wie bisher seitlich am Bild. Auf dem Handy wird sie zu
+              einer echten Reihe zwischen Bild und Beschriftung. */}
           {items.length > 1 &&
-      <>
+      <div className="lb-controls">
               <button className="lightbox-arrow prev" onClick={() => go(-1)} aria-label="Previous image">
                 <svg viewBox="0 0 24 24"><polyline points="15,18 9,12 15,6" /></svg>
               </button>
               <button className="lightbox-arrow next" onClick={() => go(1)} aria-label="Next image">
                 <svg viewBox="0 0 24 24"><polyline points="9,18 15,12 9,6" /></svg>
               </button>
-            </>
+            </div>
       }
           <div className="lightbox-label">{index + 1} / {items.length} — {cur.label}</div>
         </div>);

@@ -1916,15 +1916,50 @@
       .lb-pimg img, .lb-video { max-width: calc(100vw - 176px); }
     }
 
-    /* Handy: Die Pfeile wandern unter das Bild, mittig zwischen Bildkante
-       und Beschriftung. Seitlich bleiben sie, wo sie waren. */
+    /* Am Computer und auf dem Tablet löst sich die Pfeilzeile auf, die
+       Pfeile sitzen dann wie bisher absolut seitlich am Bild. */
+    .lb-controls { display: contents; }
+
+    /* Handy: Bild, Pfeile und Beschriftung stehen wirklich untereinander.
+       Ein fester Abstand vom unteren Rand konnte das nicht leisten — wo
+       die Unterkante des Bildes liegt, hängt von seinem Seitenverhältnis
+       ab. Jetzt umschließt die Bildfläche das Bild, und die Pfeile stehen
+       in einer eigenen Zeile mit gleichem Abstand nach oben und unten,
+       also mittig zwischen Bild und Beschriftung. */
     @media (max-width: 600px) {
-      .lb-viewport { bottom: 96px; }
-      .lb-pimg img, .lb-video { max-height: calc(82vh - 96px); }
+      .lightbox {
+        flex-direction: column;
+        justify-content: center;
+      }
+      .lb-viewport {
+        position: relative;
+        inset: auto;
+        width: 100%;
+        flex: 0 1 auto;
+      }
+      .lb-pimg img, .lb-video { max-height: calc(82vh - 130px); }
+
+      .lb-controls {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        width: 100%;
+        flex: 0 0 auto;
+        /* gleich viel Luft nach oben wie nach unten */
+        padding: 20px 24px;
+      }
       .lightbox-arrow {
+        position: static;
         top: auto;
-        bottom: 54px;
+        left: auto;
+        right: auto;
         transform: none;
+      }
+      .lightbox-label {
+        position: static;
+        transform: none;
+        bottom: auto; left: auto;
+        padding-bottom: 24px;
       }
     }
 
