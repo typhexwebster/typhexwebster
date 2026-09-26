@@ -1247,7 +1247,7 @@ const MusicGallery = ({ active, onActiveChange, onSelectAlbum, tweaks, playerOpe
 };
 
 // ─── ALBUM DETAIL ───────────────────────────────────────────────────
-const AlbumDetail = ({ album, onBack, onPlay, currentTrack, isPlaying, variant = 'music', onGoLibrary }) => {
+const AlbumDetail = ({ album, onBack, onPlay, currentTrack, isPlaying, playerOpen = true, variant = 'music', onGoLibrary }) => {
   const isLibrary = variant === 'library';
   // Gehört das gerade geladene Lied zu diesem Album? Danach richtet sich
   // der große Play-/Pause-Knopf über der Trackliste.
@@ -1576,7 +1576,9 @@ const AlbumDetail = ({ album, onBack, onPlay, currentTrack, isPlaying, variant =
           <div className="tracklist">
             {visibleTracks.map((track) => {
           const isThisPlaying = currentTrack?.id === track.id && currentTrack?.albumId === album.id && isPlaying;
-          const isThisLoaded = currentTrack?.id === track.id && currentTrack?.albumId === album.id;
+          // Orange, solange das Lied im Player steht — auch pausiert.
+          // Wird der Player geschlossen, ist es wieder weiss.
+          const isThisLoaded = playerOpen && currentTrack?.id === track.id && currentTrack?.albumId === album.id;
           return (
             <div key={track.id} className={`track-row ${isThisLoaded ? 'playing' : ''}`} onClick={() => onPlay(track, album)}>
                   <div className="track-num">
@@ -2871,6 +2873,7 @@ const App = () => {
           onPlay={handlePlay}
           currentTrack={currentTrack}
           isPlaying={isPlaying}
+          playerOpen={playerPhase === 'open'}
           onGoLibrary={() => { setSelectedAlbum(null); navigate('library'); }} />
 
         }
@@ -2891,7 +2894,8 @@ const App = () => {
           onBack={() => setSelectedAlbum(null)}
           onPlay={handlePlay}
           currentTrack={currentTrack}
-          isPlaying={isPlaying} />
+          isPlaying={isPlaying}
+          playerOpen={playerPhase === 'open'} />
 
         }
             </div>

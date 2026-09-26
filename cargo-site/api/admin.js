@@ -78,10 +78,11 @@ export default async function handler(req, res) {
           p_bucket: bucket === 'hour' ? 'hour' : 'day',
         });
         if (error) {
-          if (/analytics_summary|events/.test(error.message || '')) {
-            throw new Error('Analytics is not set up yet — run supabase/migration_04.sql first.');
-          }
-          throw error;
+          // Die echte Meldung immer mitliefern — sonst lässt sich nicht
+          // unterscheiden, ob das Skript fehlt oder etwas anderes klemmt.
+          throw new Error('Analytics: ' + (error.message || String(error)) +
+            (error.hint ? ' — ' + error.hint : '') +
+            (error.code ? ' [' + error.code + ']' : ''));
         }
         return res.json(data);
       }

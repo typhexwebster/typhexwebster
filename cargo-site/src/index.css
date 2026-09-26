@@ -644,6 +644,12 @@
       font-weight: 700;
       letter-spacing: 0.2em;
       color: var(--white);
+      /* Optisch mittig zwischen Cover und Künstlername. Gemessen an den
+         sichtbaren Buchstaben: vorher 33 px Luft darüber, 16 px darunter.
+         Nur der Titel rückt hoch — Cover, Künstlername und alles darunter
+         bleiben, wo sie sind. */
+      position: relative;
+      top: -8px;
     }
 
     .detail-artist {

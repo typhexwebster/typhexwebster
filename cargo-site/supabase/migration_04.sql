@@ -74,11 +74,14 @@ as $$
 declare
   v_bucket text := case when p_bucket = 'hour' then 'hour' else 'day' end;
   v_start  timestamptz;
-  v_result jsonb;
 begin
   -- "Alles" beginnt beim ersten Ereignis, nicht 1970.
-  select greatest(p_since, coalesce(min(at), now())) into v_start from public.events;
+  -- Bewusst Zuweisung statt SELECT … INTO: Der SQL-Editor von Supabase
+  -- hält SELECT INTO für das Anlegen einer Tabelle und schiebt einen
+  -- eigenen Befehl mitten in die Funktion — dann bricht sie.
+  v_start := greatest(p_since, coalesce((select min(at) from public.events), now()));
 
+  return (
   with ev as (
     select * from public.events where at >= v_start
   ),
@@ -188,9 +191,7 @@ begin
         select at, type, section, album_title, track_no, track_title,
                redownload, country, device
           from public.events order by at desc limit 30) r), '[]'::jsonb)
-  ) into v_result;
-
-  return v_result;
+  ));
 end;
 $$;
 
@@ -198,3 +199,7 @@ $$;
 revoke all on function public.analytics_summary(timestamptz, text, text) from public;
 revoke all on function public.analytics_summary(timestamptz, text, text) from anon, authenticated;
 grant execute on function public.analytics_summary(timestamptz, text, text) to service_role;
+
+-- Die Schnittstelle von Supabase kennt neue Tabellen und Funktionen erst,
+-- wenn sie ihr Verzeichnis neu einliest. Das hier stößt es sofort an.
+notify pgrst, 'reload schema';
