@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from './supabaseClient.js';
 import { analyseAudio, formatDuration } from './eqBake.js';
+import { SITE_TEXTS } from './siteTexts.js';
 
 // ── Network helpers ──────────────────────────────────────────────────
 async function apiCall(pw, action, body = {}) {
@@ -466,32 +467,76 @@ function GalleryTab({ pw, data, reload, toast }) {
 }
 
 // ── Texts tab ────────────────────────────────────────────────────────
-function SiteTab({ pw, data, reload, toast }) {
-  const [rows, setRows] = useState(data.site || []);
-  const [nk, setNk] = useState(''); const [nv, setNv] = useState('');
-  useEffect(() => setRows(data.site || []), [data.site]);
-  const save = async (key, value) => {
-    try { await apiCall(pw, 'saveSite', { key, value }); toast('Saved ✓'); }
-    catch (e) { toast('Error: ' + e.message); }
+// Früher konnte man hier beliebige Schlüssel anlegen — nur hat die
+// öffentliche Seite keinen davon gelesen. Ein Schlüssel wirkt erst, wenn er
+// im Code verdrahtet ist, deshalb zeigt der Reiter jetzt genau die Texte,
+// die es wirklich gibt: beschriftet, mit Hinweis, wo sie stehen.
+function SiteTab({ pw, data, toast }) {
+  const stored = {};
+  (data.site || []).forEach((r) => { stored[r.key] = r.value || ''; });
+
+  // Ist noch nichts gespeichert, steht der Text aus dem Code im Feld —
+  // man bearbeitet ihn also, statt bei null anzufangen.
+  const [vals, setVals] = useState(() => {
+    const o = {};
+    SITE_TEXTS.forEach((t) => { o[t.key] = stored[t.key] || t.fallback; });
+    return o;
+  });
+  const [busy, setBusy] = useState('');
+
+  useEffect(() => {
+    const o = {};
+    SITE_TEXTS.forEach((t) => { o[t.key] = (stored[t.key] || '').trim() || t.fallback; });
+    setVals(o);
+  }, [data.site]); // eslint-disable-line
+
+  const save = async (t) => {
+    setBusy(t.key);
+    try {
+      await apiCall(pw, 'saveSite', { key: t.key, value: vals[t.key] });
+      toast('Saved ✓ — live right away');
+    } catch (e) { toast('Error: ' + e.message); } finally { setBusy(''); }
   };
+
+  const reset = (t) => setVals((p) => ({ ...p, [t.key]: t.fallback }));
+
+  // Schlüssel aus alten Versuchen, die niemand liest — der Ehrlichkeit
+  // halber sichtbar, aber als wirkungslos gekennzeichnet.
+  const unused = (data.site || []).filter((r) => !SITE_TEXTS.some((t) => t.key === r.key));
+
   return (
     <div>
-      <div style={S.sub}>Free-form text blocks (for example for the landing page). The site reads them by their key.</div>
-      {rows.map((r, i) => (
-        <div key={r.key} style={S.card}>
-          <div style={{ color: C.red, fontSize: 12, marginBottom: 4 }}>{r.key}</div>
-          <textarea style={S.ta} value={r.value || ''} onChange={(e) => setRows((p) => p.map((x, idx) => idx === i ? { ...x, value: e.target.value } : x))} />
-          <button style={{ ...S.btn, marginTop: 8 }} onClick={() => save(r.key, rows[i].value)}>save</button>
+      <div style={S.sub}>
+        These are the texts on the site you can edit. Changes are live immediately.
+      </div>
+
+      {SITE_TEXTS.map((t) => (
+        <div key={t.key} style={S.card}>
+          <div style={{ color: C.red, fontSize: 12, letterSpacing: '0.08em' }}>{t.label}</div>
+          <div style={{ color: C.dim, fontSize: 10, margin: '4px 0 10px' }}>
+            {t.hint} <span style={{ opacity: 0.6 }}>· key: {t.key}</span>
+          </div>
+          <textarea
+            style={{ ...S.ta, minHeight: t.multiline ? 150 : 70 }}
+            value={vals[t.key] || ''}
+            onChange={(e) => setVals((p) => ({ ...p, [t.key]: e.target.value }))} />
+          <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+            <button style={S.btn} onClick={() => save(t)} disabled={busy === t.key}>
+              {busy === t.key ? 'saving…' : 'save'}
+            </button>
+            <button style={S.btnGhost} onClick={() => reset(t)}>reset to default</button>
+          </div>
         </div>
       ))}
-      <div style={S.card}>
-        <div style={{ color: C.red, fontSize: 12, marginBottom: 8 }}>NEW TEXT</div>
-        <div style={S.grid2}>
-          <Field label="Key" value={nk} onChange={setNk} placeholder="hero_title" />
+
+      {unused.length > 0 && (
+        <div style={{ ...S.card, borderStyle: 'dashed' }}>
+          <div style={{ color: C.dim, fontSize: 11, lineHeight: 1.7 }}>
+            Left over from earlier: {unused.map((r) => r.key).join(', ')}.<br />
+            Nothing on the site reads these — they have no effect.
+          </div>
         </div>
-        <Field label="Value" value={nv} onChange={setNv} textarea />
-        <button style={{ ...S.btn, marginTop: 8 }} onClick={async () => { if (!nk) return; await save(nk, nv); setNk(''); setNv(''); reload(); }}>add</button>
-      </div>
+      )}
     </div>
   );
 }
@@ -540,7 +585,7 @@ export default function Admin() {
       </div>
       {tab === 'albums' && <AlbumsTab pw={pw} data={data} reload={reload} toast={toast} />}
       {tab === 'gallery' && <GalleryTab pw={pw} data={data} reload={reload} toast={toast} />}
-      {tab === 'site' && <SiteTab pw={pw} data={data} reload={reload} toast={toast} />}
+      {tab === 'site' && <SiteTab pw={pw} data={data} toast={toast} />}
       {toastMsg && <div style={S.toast}>{toastMsg}</div>}
     </div>
   );

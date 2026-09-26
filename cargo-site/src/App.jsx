@@ -11,6 +11,7 @@ import { ALBUMS, COVER_IMAGES, GALLERY, SITE, loadTrackEq } from './content.js';
 import * as eqData from './eqData.js';
 import * as downloads from './downloads.js';
 import * as beatMotion from './beatMotion.js';
+import { siteText } from './siteTexts.js';
 import { fetchWithProgress, saveBlob, makeZip, safeFilename, extensionFromUrl } from './fileTransfer.js';
 
 
@@ -1910,11 +1911,10 @@ const CargoPage = ({ onBeatStart }) => {
       filter: `brightness(0) saturate(100%) invert(35%) sepia(80%) saturate(800%) hue-rotate(345deg)`
     }} />
   
-        <div className="cargo-text">
-          CARGO is an independent music label founded by Typhex Webster.<br /><br />
-          We exist outside the mainstream — built for artists who move between worlds, genres, and aesthetics without asking permission.<br /><br />
-          CARGO releases music, clothing, and visual projects under one roof. Everything is made with intention. Nothing is rushed.
-        </div>
+        {/* Kommt aus dem Admin unter TEXTS, Schlüssel `label_text`.
+            Solange dort nichts steht, greift der Text aus siteTexts.js.
+            Absätze entstehen durch Leerzeilen, das erledigt das CSS. */}
+        <div className="cargo-text">{siteText(SITE, 'label_text')}</div>
         {/* Übergang vom echten Label in die erfundene Welt: Planet und
             Erzähltext leiten die Objektstrecke ein. */}
         <div className="cargo-world">

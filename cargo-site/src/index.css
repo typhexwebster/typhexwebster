@@ -1140,6 +1140,9 @@
       color: #888;
       letter-spacing: 0.08em;
       margin-bottom: 48px;
+      /* Der Text kommt aus dem Admin. pre-line macht aus den Zeilenumbrüchen
+         im Eingabefeld echte Absätze, ohne dass jemand HTML tippen muss. */
+      white-space: pre-line;
     }
 
     /* ── CARGO: WELT UND OBJEKTSTRECKE ──
