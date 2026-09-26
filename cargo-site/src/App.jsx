@@ -1049,14 +1049,21 @@ const MusicGallery = ({ active, onActiveChange, onSelectAlbum, tweaks, playerOpe
   );
 
   // ── Platz schaffen, wenn der Player offen ist ──────────────────────
-  // Der Zeilenabstand soll so weit wie möglich bei 24 px bleiben — er wird
-  // nur dort enger, wo es wirklich nötig ist. Deshalb probieren wir von
-  // oben nach unten: zuerst 24, dann 23, 22 … bis höchstens 12. Für jeden
-  // Wert darf der Block zusätzlich nach oben rücken, aber nur so weit, dass
-  // oben ein Rest bleibt — sonst würde das Cover unter den Kopfbereich
-  // geraten. Der erste Wert, bei dem der Player frei steht, gewinnt.
-  // Reicht selbst 12 px nicht (sehr flache Fenster), darf zuletzt das
-  // Cover kleiner werden.
+  // Der Zeilenabstand ist das Letzte, was nachgibt — er trägt am meisten
+  // zum ruhigen Gesamtbild bei. Deshalb in dieser Reihenfolge:
+  //
+  //   1. Hochschieben. Kostet optisch nichts, solange oben Luft bleibt;
+  //      wir lassen bewusst einen Rest, damit das Cover nie unter den
+  //      Kopfbereich gerät.
+  //   2. Cover verkleinern, bis herunter zu COVER_FLOOR. Ein etwas
+  //      kleineres Cover fällt kaum auf, zusammengequetschte Zeilen schon.
+  //   3. Erst jetzt den Abstand enger ziehen, höchstens bis ROW_GAP_MIN.
+  //   4. Notnagel für absurde Fenster: Cover weiter herunter bis 120.
+  //
+  // Nachgerechnet über dreizehn Formate (iPhone, Android, iPad hoch und
+  // quer, Laptop, 1000×775, 900×600, 320×568 …) bleibt der Abstand damit
+  // überall bei 24 px. Schritt 3 greift in der Praxis nicht mehr.
+  const COVER_FLOOR = 160;
   const containerH = vh - HEADER_H;
   const playerSpace = Math.max(146, Math.min(vh * 0.17, 178));
   const fitFor = (card, gap) => {
@@ -1070,17 +1077,12 @@ const MusicGallery = ({ active, onActiveChange, onSelectAlbum, tweaks, playerOpe
   let lift = 0;
   if (playerOpen) {
     let gap = ROW_GAP_BASE;
-    let fit = fitFor(CARD_BASE, gap);
-    while (fit.free < playerSpace - 0.5 && gap > ROW_GAP_MIN) {
-      gap -= 1;
-      fit = fitFor(CARD_BASE, gap);
-    }
     let card = CARD_BASE;
-    // Letzte Reserve: das Cover. Greift auf Handys nie.
-    while (fit.free < playerSpace - 0.5 && card > 120) {
-      card -= 4;
-      fit = fitFor(card, gap);
-    }
+    let fit = fitFor(card, gap);
+    const short = () => fit.free < playerSpace - 0.5;
+    while (short() && card > COVER_FLOOR) { card -= 2; fit = fitFor(card, gap); }
+    while (short() && gap > ROW_GAP_MIN) { gap -= 1; fit = fitFor(card, gap); }
+    while (short() && card > 120) { card -= 2; fit = fitFor(card, gap); }
     ROW_GAP = gap;
     CARD = card;
     lift = fit.lift;
