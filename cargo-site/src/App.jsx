@@ -760,8 +760,45 @@ const LandingPage = ({ onEnter, scanlines = true, glow = true, tweaks = {} }) =>
     };
   }, []);
 
+  // ── Hintergrundfilm ────────────────────────────────────────────────
+  // Läuft stumm in Dauerschleife hinter dem ENTER-Knopf. Auf schmalen
+  // Geräten laden wir die kleinere Fassung — 1,5 statt 3,4 MB.
+  // Wer in den Systemeinstellungen weniger Bewegung wünscht, bekommt nur
+  // das Standbild.
+  const reducedMotion = typeof window !== 'undefined' && window.matchMedia &&
+  window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const [videoSrc] = React.useState(() =>
+  typeof window !== 'undefined' && window.innerWidth < 900 ?
+  '/uploads/landing-720.mp4' :
+  '/uploads/landing-1080.mp4'
+  );
+
   return (
     <div className="landing">
+        {reducedMotion ?
+      <div className="landing-video landing-video-still" /> :
+      <video
+        className="landing-video"
+        ref={(el) => {
+          if (!el) return;
+          // Manche Browser erlauben das automatische Abspielen nur, wenn
+          // "stumm" schon vor dem Start gesetzt ist — nicht nur im Markup.
+          el.muted = true;
+          el.defaultMuted = true;
+          const p = el.play();
+          if (p && p.catch) p.catch(() => {});
+        }}
+        src={videoSrc}
+        poster="/uploads/landing-poster.jpg"
+        autoPlay
+        loop
+        muted
+        playsInline
+        preload="auto"
+        aria-hidden="true"
+        tabIndex={-1} />
+      }
+        <div className="landing-video-veil" />
         {glow && <div className="landing-glow" />}
         <div className="landing-noise" />
         {scanlines && <div className="landing-scanlines" />}
@@ -834,6 +871,48 @@ const HubPage = ({ onNavigate, tweaks }) => {
 
 };
 
+// ─── OPTISCH MESSEN STATT TECHNISCH ─────────────────────────────────
+// Eine Textzeile ist höher als die Buchstaben, die man sieht: über und
+// unter der Schrift liegt unsichtbarer Überhang (Platz für Oberlängen,
+// Unterlängen und Zeilendurchschuss). Gleiche Außenabstände sehen deshalb
+// ungleich aus. Diese Funktion misst für ein Element, wie viel unsichtbarer
+// Rand oben und unten tatsächlich dazukommt — mit den echten Schriftmaßen
+// des Browsers, nicht geschätzt. Damit lassen sich Abstände so setzen, dass
+// der SICHTBARE Zwischenraum stimmt.
+let inkCanvas = null;
+function inkOverhang(el) {
+  if (!el || typeof document === 'undefined') return { top: 0, bottom: 0 };
+  const text = (el.textContent || '').trim();
+  if (!text) return { top: 0, bottom: 0 };
+  try {
+    if (!inkCanvas) inkCanvas = document.createElement('canvas');
+    const ctx = inkCanvas.getContext('2d');
+    if (!ctx) return { top: 0, bottom: 0 };
+    const cs = getComputedStyle(el);
+    ctx.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+    // Großschreibung wirkt sich auf die Oberkante der Tinte aus.
+    const shown = cs.textTransform === 'uppercase' ? text.toUpperCase() : text;
+    const m = ctx.measureText(shown);
+    const fAsc = m.fontBoundingBoxAscent;
+    const fDesc = m.fontBoundingBoxDescent;
+    const aAsc = m.actualBoundingBoxAscent;
+    const aDesc = m.actualBoundingBoxDescent;
+    if (![fAsc, fDesc, aAsc, aDesc].every((v) => typeof v === 'number' && isFinite(v))) {
+      return { top: 0, bottom: 0 };
+    }
+    const boxH = el.getBoundingClientRect().height;
+    if (!boxH) return { top: 0, bottom: 0 };
+    // Der Zeilendurchschuss verteilt sich gleichmäßig auf oben und unten.
+    const halfLeading = (boxH - (fAsc + fDesc)) / 2;
+    return {
+      top: Math.max(0, halfLeading + fAsc - aAsc),
+      bottom: Math.max(0, boxH - (halfLeading + fAsc + aDesc))
+    };
+  } catch (e) {
+    return { top: 0, bottom: 0 };
+  }
+}
+
 // ─── EINZEILIGER TITEL MIT LAUFTEXT ─────────────────────────────────
 // Ein Titel bricht nie um. Passt er in die Breite, steht er einfach da.
 // Passt er nicht, verhält er sich wie im Player von Apple: er steht vier
@@ -843,7 +922,7 @@ const HubPage = ({ onNavigate, tweaks }) => {
 //
 // Gemessen wird die tatsächliche Textbreite gegen die verfügbare Breite —
 // nicht geschätzt. Ändert sich das Fenster oder der Text, wird neu gemessen.
-const OneLine = ({ text, className = '', style, animate = true }) => {
+const OneLine = ({ text, className = '', style, animate = true, measureRef = null }) => {
   const boxRef = useRef(null);
   const innerRef = useRef(null);
   const [over, setOver] = useState(0);   // wie viele Pixel zu breit
@@ -884,29 +963,55 @@ const OneLine = ({ text, className = '', style, animate = true }) => {
     window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const running = over > 0 && animate && !reduced;
 
+  // Vier Zustände, genau wie im Apple-Player:
+  //   start   — steht am Anfang, nur rechts ein Fade (dort geht es weiter)
+  //   toEnd   — wandert nach links, beide Seiten weich
+  //   end     — steht am Ende, nur links ein Fade (dort kam es her)
+  //   toStart — gleitet zurück, beide Seiten weich
+  const [stage, setStage] = useState('start');
+
   useEffect(() => {
     setShift(0);
     setMoveMs(0);
+    setStage('start');
     if (!running) return;
     const HOLD = 4000;                                  // Standzeit an beiden Enden
     const travel = Math.max(700, Math.round(over * 22)); // ~45 px pro Sekunde
     let timer = null;
-    let atEnd = false;
-    const step = () => {
-      atEnd = !atEnd;
-      setMoveMs(travel);
-      setShift(atEnd ? -over : 0);
-      timer = setTimeout(step, travel + HOLD);
+    const go = (next) => {
+      setStage(next);
+      if (next === 'toEnd') {
+        setMoveMs(travel); setShift(-over);
+        timer = setTimeout(() => go('end'), travel);
+      } else if (next === 'end') {
+        timer = setTimeout(() => go('toStart'), HOLD);
+      } else if (next === 'toStart') {
+        setMoveMs(travel); setShift(0);
+        timer = setTimeout(() => go('start'), travel);
+      } else {
+        timer = setTimeout(() => go('toEnd'), HOLD);
+      }
     };
-    timer = setTimeout(step, HOLD);
+    timer = setTimeout(() => go('toEnd'), HOLD);
     return () => clearTimeout(timer);
   }, [running, over, text]);
 
+  // Fade-Breiten: rechts nur, solange rechts noch Text wartet; links nur,
+  // sobald der Text den Anfang verlassen hat.
+  const FADE = 16;
+  const fadeL = running && stage !== 'start' ? FADE : 0;
+  const fadeR = running && stage !== 'end' ? FADE : 0;
+
   return (
     <div
-      ref={boxRef}
+      ref={(el) => {
+        boxRef.current = el;
+        // Nur beim Anhängen setzen: beim Wechsel der aktiven Karte würde
+        // ein Abhängen sonst den gerade gesetzten Verweis wieder löschen.
+        if (measureRef && el) measureRef.current = el;
+      }}
       className={`one-line ${running ? 'one-line-run' : ''} ${className}`.trim()}
-      style={style}
+      style={{ ...style, '--fade-l': `${fadeL}px`, '--fade-r': `${fadeR}px` }}
       title={text}>
       <span
         ref={innerRef}
@@ -927,6 +1032,11 @@ const MusicGallery = ({ active, onActiveChange, onSelectAlbum, tweaks, playerOpe
   const wrapRef = useRef(null);
   const touchRef = useRef({ x: 0, y: 0, active: false, swiped: false, horizontal: false });
   const album = ALBUMS[active];
+  // Für die optische Ausrichtung: Wir brauchen die echten Schriftmaße der
+  // Titelzeile und der Beschriebzeile, wie sie gerade auf dem Schirm stehen.
+  const titleBoxRef = useRef(null);
+  const availRef = useRef(null);
+  const [ink, setInk] = useState({ titleBottom: 0, availTop: 0, availBottom: 0 });
 
   useEffect(() => {
     const measure = () => {setVw(window.innerWidth);setVh(window.innerHeight);};
@@ -985,7 +1095,6 @@ const MusicGallery = ({ active, onActiveChange, onSelectAlbum, tweaks, playerOpe
   // (12 px) optisch schon ein Teil der Lücke ist — deshalb hier abziehen,
   // damit beide Lücken gleich aussehen.
   const CAROUSEL_PAD_B = 12;
-  const availGap = Math.max(0, ROW_GAP - CAROUSEL_PAD_B);
   // Höhe unter dem Cover: Lücke + Beschriebzeile + Lücke + Punkte + Puffer.
   const belowFor = (gap) => 2 * gap + 32;
   // Für die Cover-Größe rechnen wir bewusst IMMER mit dem weiten Abstand.
@@ -1026,6 +1135,34 @@ const MusicGallery = ({ active, onActiveChange, onSelectAlbum, tweaks, playerOpe
     CARD = card;
     lift = fit.lift;
   }
+
+  // ── optischer Ausgleich ───────────────────────────────────────────
+  // Titel und Beschrieb bringen unsichtbaren Überhang mit, die Punkte
+  // nicht. Wir ziehen diesen Überhang von den Außenabständen ab, damit
+  // der sichtbare Zwischenraum oben und unten gleich groß ist.
+  useEffect(() => {
+    const measure = () => {
+      const t = inkOverhang(titleBoxRef.current);
+      const a = inkOverhang(availRef.current);
+      setInk((prev) => {
+        const next = { titleBottom: t.bottom, availTop: a.top, availBottom: a.bottom };
+        const same = Math.abs(prev.titleBottom - next.titleBottom) < 0.5 &&
+          Math.abs(prev.availTop - next.availTop) < 0.5 &&
+          Math.abs(prev.availBottom - next.availBottom) < 0.5;
+        return same ? prev : next;
+      });
+    };
+    measure();
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(measure).catch(() => {});
+    }
+  }, [titleSize, vw, vh, active, album && album.title, album && album.availability]);
+
+  // Sichtbarer Zwischenraum = Außenabstand + Überhang beider Nachbarn.
+  // Also den Überhang abziehen. Der untere Innenabstand des Karussells
+  // zählt ebenfalls schon zum sichtbaren Raum.
+  const availGap = Math.round(ROW_GAP - ink.titleBottom - ink.availTop - CAROUSEL_PAD_B);
+  const dotsGap = Math.round(ROW_GAP - ink.availBottom);
 
   const GAP = Math.max(
     GAP_MIN,
@@ -1122,6 +1259,7 @@ const MusicGallery = ({ active, onActiveChange, onSelectAlbum, tweaks, playerOpe
                     <OneLine
                   text={a.title}
                   animate={pos === 'center'}
+                  measureRef={pos === 'center' ? titleBoxRef : null}
                   style={{
                     textAlign: 'center',
                     fontFamily: 'var(--mono)',
@@ -1141,7 +1279,7 @@ const MusicGallery = ({ active, onActiveChange, onSelectAlbum, tweaks, playerOpe
             </div>
           </div>
 
-          <div className="album-availability" style={{ marginTop: availGap }}>
+          <div className="album-availability" ref={availRef} style={{ marginTop: availGap }}>
             {album.availabilityLinks ?
         <>also available at <a href={album.availabilityLinks.apple}>apple music</a> &amp; <a href={album.availabilityLinks.spotify}>spotify</a></> :
         album.availability
@@ -1150,7 +1288,7 @@ const MusicGallery = ({ active, onActiveChange, onSelectAlbum, tweaks, playerOpe
 
           {/* Punkte bekommen denselben Abstand zum Beschrieb wie der
               Beschrieb zum Titel — ein Wert für beide Lücken. */}
-          <div className="carousel-dots" style={{ marginTop: ROW_GAP }}>
+          <div className="carousel-dots" style={{ marginTop: dotsGap }}>
             {ALBUMS.map((_, i) =>
         <div key={i} className={`dot ${i === active ? 'active' : ''}`} onClick={() => goTo(i)} />
         )}
