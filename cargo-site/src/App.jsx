@@ -834,6 +834,91 @@ const HubPage = ({ onNavigate, tweaks }) => {
 
 };
 
+// ─── EINZEILIGER TITEL MIT LAUFTEXT ─────────────────────────────────
+// Ein Titel bricht nie um. Passt er in die Breite, steht er einfach da.
+// Passt er nicht, verhält er sich wie im Player von Apple: er steht vier
+// Sekunden still, wandert dann gleichmäßig nach links bis zum Ende, wartet
+// dort wieder und gleitet zurück an den Anfang. Die Ränder sind weich
+// ausgeblendet, damit der Text nicht hart abgeschnitten wirkt.
+//
+// Gemessen wird die tatsächliche Textbreite gegen die verfügbare Breite —
+// nicht geschätzt. Ändert sich das Fenster oder der Text, wird neu gemessen.
+const OneLine = ({ text, className = '', style, animate = true }) => {
+  const boxRef = useRef(null);
+  const innerRef = useRef(null);
+  const [over, setOver] = useState(0);   // wie viele Pixel zu breit
+  const [shift, setShift] = useState(0); // aktuelle Verschiebung
+  const [moveMs, setMoveMs] = useState(0);
+
+  // ── messen ──
+  useEffect(() => {
+    const measure = () => {
+      const box = boxRef.current, inner = innerRef.current;
+      if (!box || !inner) return;
+      // Breite 0 heißt: gerade nicht sichtbar (eingeklappter Player o. ä.).
+      // Dann messen wir nicht, sonst würde alles als "zu breit" gelten.
+      if (!box.clientWidth) { setOver(0); return; }
+      const diff = Math.ceil(inner.scrollWidth - box.clientWidth);
+      setOver(diff > 1 ? diff : 0);
+    };
+    measure();
+    let ro = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(measure);
+      if (boxRef.current) ro.observe(boxRef.current);
+      if (innerRef.current) ro.observe(innerRef.current);
+    }
+    window.addEventListener('resize', measure);
+    // Schriften laden oft später nach; dann stimmt die erste Messung nicht.
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(measure).catch(() => {});
+    }
+    return () => {
+      if (ro) ro.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [text]);
+
+  // ── wandern ──
+  const reduced = typeof window !== 'undefined' && window.matchMedia &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const running = over > 0 && animate && !reduced;
+
+  useEffect(() => {
+    setShift(0);
+    setMoveMs(0);
+    if (!running) return;
+    const HOLD = 4000;                                  // Standzeit an beiden Enden
+    const travel = Math.max(700, Math.round(over * 22)); // ~45 px pro Sekunde
+    let timer = null;
+    let atEnd = false;
+    const step = () => {
+      atEnd = !atEnd;
+      setMoveMs(travel);
+      setShift(atEnd ? -over : 0);
+      timer = setTimeout(step, travel + HOLD);
+    };
+    timer = setTimeout(step, HOLD);
+    return () => clearTimeout(timer);
+  }, [running, over, text]);
+
+  return (
+    <div
+      ref={boxRef}
+      className={`one-line ${running ? 'one-line-run' : ''} ${className}`.trim()}
+      style={style}
+      title={text}>
+      <span
+        ref={innerRef}
+        className="one-line-in"
+        style={{
+          transform: `translateX(${shift}px)`,
+          transition: moveMs ? `transform ${moveMs}ms cubic-bezier(0.4,0,0.2,1)` : 'none'
+        }}>{text}</span>
+    </div>);
+
+};
+
 // ─── MUSIC GALLERY ──────────────────────────────────────────────────
 const MusicGallery = ({ active, onActiveChange, onSelectAlbum, tweaks, playerOpen }) => {
   const [vw, setVw] = useState(() => typeof window !== 'undefined' ? window.innerWidth : 800);
@@ -890,14 +975,58 @@ const MusicGallery = ({ active, onActiveChange, onSelectAlbum, tweaks, playerOpe
   const HEADER_H = 100;
   const PAD_V = 24; // carousel top+bottom breathing room
   const TITLE_BLOCK = 18 + Math.round(titleSize * 1.5); // title gap + line
-  const BELOW_BLOCK = 86; // availability + dots + margins
+  // ── Ein einziger Zeilenabstand ────────────────────────────────────
+  // Titel → Beschrieb und Beschrieb → Punkte bekommen denselben Wert.
+  // Bei offenem Player rückt alles enger zusammen; das ist die einzige
+  // Stelle, an der dieser Abstand definiert wird.
+  const ROW_GAP_BASE = 24;
+  const ROW_GAP = playerOpen ? 12 : ROW_GAP_BASE;
+  // Der Beschrieb sitzt unter dem Karussell, dessen unterer Innenabstand
+  // (12 px) optisch schon ein Teil der Lücke ist — deshalb hier abziehen,
+  // damit beide Lücken gleich aussehen.
+  const CAROUSEL_PAD_B = 12;
+  const availGap = Math.max(0, ROW_GAP - CAROUSEL_PAD_B);
+  // Höhe unter dem Cover: Lücke + Beschriebzeile + Lücke + Punkte + Puffer.
+  const belowFor = (gap) => 2 * gap + 32;
+  // Für die Cover-Größe rechnen wir bewusst IMMER mit dem weiten Abstand.
+  // Sonst würde das Cover beim Öffnen des Players seine Größe ändern.
+  const BELOW_BLOCK = belowFor(ROW_GAP_BASE);
   const SAFETY = 16;
   const reservedV = HEADER_H + PAD_V + TITLE_BLOCK + BELOW_BLOCK + SAFETY;
   const heightLimit = vh - reservedV;
   const widthLimit = (vw / 2 - GAP_MIN) / (0.5 + sideScale * sideVis);
-  const CARD = Math.round(
+  const CARD_BASE = Math.round(
     Math.max(120, Math.min(MAX_CARD, widthLimit, heightLimit))
   );
+
+  // ── Platz schaffen, wenn der Player offen ist ──────────────────────
+  // Erste Quelle: der engere Zeilenabstand. Zweite: der ganze Block rückt
+  // nach oben, aber nur so weit, dass oben ein Rest bleibt — sonst würde
+  // das Cover unter den Kopfbereich rutschen. Reicht beides nicht (flache
+  // Fenster), darf drittens das Cover kleiner werden.
+  const containerH = vh - HEADER_H;
+  const playerSpace = Math.max(146, Math.min(vh * 0.17, 178));
+  const fitFor = (card) => {
+    const contentH = PAD_V + card + TITLE_BLOCK + belowFor(ROW_GAP);
+    const slack = Math.max(0, (containerH - contentH) / 2);
+    const lift = Math.round(Math.max(0, Math.min(playerSpace - slack, slack - 8)));
+    return { lift, free: slack + lift };
+  };
+  let CARD = CARD_BASE;
+  let lift = 0;
+  if (playerOpen) {
+    let card = CARD_BASE;
+    let fit = fitFor(card);
+    // Schrittweise verkleinern, bis der Player frei steht. Auf Handys
+    // greift das nie — dort reicht der Hub, das Cover bleibt gleich groß.
+    while (fit.free < playerSpace - 0.5 && card > 120) {
+      card -= 4;
+      fit = fitFor(card);
+    }
+    CARD = card;
+    lift = fit.lift;
+  }
+
   const GAP = Math.max(
     GAP_MIN,
     Math.round(vw / 2 - CARD / 2 - CARD * sideScale * sideVis)
@@ -945,27 +1074,6 @@ const MusicGallery = ({ active, onActiveChange, onSelectAlbum, tweaks, playerOpe
   const centreOffset = vw / 2 - CARD / 2;
   const baseTranslate = centreOffset - active * (CARD + GAP);
 
-  // ── Platz schaffen, wenn der Player offen ist ──────────────────────
-  // Das Cover behält seine Größe. Der Platz kommt erstens aus dem engeren
-  // Zeilenabstand unter dem Titel und zweitens daraus, dass der ganze
-  // Block ein Stück nach oben rückt.
-  //
-  // Wie weit er darf, rechnen wir aus, statt es zu raten: Der Block sitzt
-  // mittig, oben und unten ist also gleich viel Luft. Wir verschieben
-  // höchstens so weit, dass oben noch ein Rest bleibt — sonst würde das
-  // Cover unter den Kopfbereich rutschen. Auf großen Bildschirmen reicht
-  // das, um den Player ganz freizuhalten; auf kleinen Handys bleibt es
-  // bewusst bei dem, was ohne Beschneiden möglich ist.
-  const DOTS_GAP = playerOpen ? 12 : 32;
-  const belowBlock = BELOW_BLOCK - (32 - DOTS_GAP);
-  const containerH = vh - HEADER_H;
-  const contentH = PAD_V + CARD + TITLE_BLOCK + belowBlock;
-  const slack = Math.max(0, (containerH - contentH) / 2);
-  const playerSpace = Math.max(146, Math.min(vh * 0.17, 178));
-  const lift = playerOpen ?
-  Math.round(Math.max(0, Math.min(playerSpace - slack, slack - 8))) :
-  0;
-
   return (
     <div
       className="music-gallery gallery-fade"
@@ -1008,36 +1116,41 @@ const MusicGallery = ({ active, onActiveChange, onSelectAlbum, tweaks, playerOpe
                 }}>
                 
                     <CoverPlaceholder album={a} size={CARD} />
-                    <div style={{
-                  textAlign: 'center',
-                  fontFamily: 'var(--mono)',
-                  fontSize: titleSize,
-                  letterSpacing: tweaks.albumTitleLetterSpacing + 'em',
-                  color: 'var(--white)',
-                  textTransform: 'uppercase',
-                  marginTop: tweaks.albumTitleOffset + 20,
-                  marginBottom: tweaks.albumTitleMarginBottom,
-                  opacity: pos === 'center' ? 1 : 0,
-                  transition: 'opacity 0.4s ease',
-                  pointerEvents: 'none'
-                }}>{a.title}</div>
+                    {/* Der Titel bleibt immer einzeilig. Ist er zu breit,
+                        wandert er wie im Apple-Player sanft nach links und
+                        wieder zurück, statt umzubrechen. */}
+                    <OneLine
+                  text={a.title}
+                  animate={pos === 'center'}
+                  style={{
+                    textAlign: 'center',
+                    fontFamily: 'var(--mono)',
+                    fontSize: titleSize,
+                    letterSpacing: tweaks.albumTitleLetterSpacing + 'em',
+                    color: 'var(--white)',
+                    textTransform: 'uppercase',
+                    marginTop: tweaks.albumTitleOffset + 20,
+                    marginBottom: tweaks.albumTitleMarginBottom,
+                    opacity: pos === 'center' ? 1 : 0,
+                    transition: 'opacity 0.4s ease',
+                    pointerEvents: 'none'
+                  }} />
                   </div>);
 
           })}
             </div>
           </div>
 
-          <div className="album-availability">
+          <div className="album-availability" style={{ marginTop: availGap }}>
             {album.availabilityLinks ?
         <>also available at <a href={album.availabilityLinks.apple}>apple music</a> &amp; <a href={album.availabilityLinks.spotify}>spotify</a></> :
         album.availability
         }
           </div>
 
-          {/* Bei offenem Player rücken die Punkte so dicht an die Infozeile
-              wie die Infozeile an den Titel — gleicher Abstand, ruhiger
-              Rhythmus, und es wird Platz frei. */}
-          <div className="carousel-dots" style={{ marginTop: DOTS_GAP }}>
+          {/* Punkte bekommen denselben Abstand zum Beschrieb wie der
+              Beschrieb zum Titel — ein Wert für beide Lücken. */}
+          <div className="carousel-dots" style={{ marginTop: ROW_GAP }}>
             {ALBUMS.map((_, i) =>
         <div key={i} className={`dot ${i === active ? 'active' : ''}`} onClick={() => goTo(i)} />
         )}
@@ -1721,7 +1834,7 @@ const NowPlayingBar = ({ track, album, isPlaying, phase, minimized, tweaks, onTo
                 <button className="np-ctrl" onClick={onNext} aria-label="Next"><NextDouble /></button>
               </div>
               <div className="np-meta">
-                <div className="np-title">{track?.title}</div>
+                <OneLine className="np-title" text={track?.title || ''} animate={!minimized} />
                 <div className="np-artist">{track?.artist}</div>
               </div>
               <button

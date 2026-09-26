@@ -381,11 +381,33 @@
          eigene Geste wahrnimmt und nicht als Ruck. */
       transition: transform 0.7s cubic-bezier(0.22, 0.61, 0.36, 1);
     }
-    .carousel-dots {
+    .carousel-dots, .album-availability {
       transition: margin-top 0.7s cubic-bezier(0.22, 0.61, 0.36, 1);
     }
     @media (prefers-reduced-motion: reduce) {
-      .music-gallery, .carousel-dots { transition: none; }
+      .music-gallery, .carousel-dots, .album-availability { transition: none; }
+    }
+
+    /* Einzeiliger Titel mit sanftem Lauftext (siehe OneLine in App.jsx).
+       Ohne Überlänge verhält sich das Element wie ein normaler Textblock. */
+    .one-line {
+      overflow: hidden;
+      white-space: nowrap;
+    }
+    .one-line-in {
+      display: inline-block;
+      white-space: nowrap;
+      will-change: transform;
+    }
+    /* Nur wenn wirklich gewandert wird: links ausrichten (sonst würde ein
+       zentrierter, zu breiter Text schon am Start halb aus dem Bild ragen)
+       und die Ränder weich ausblenden. */
+    .one-line-run {
+      text-align: left;
+      -webkit-mask-image: linear-gradient(to right,
+        transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
+      mask-image: linear-gradient(to right,
+        transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
     }
 
     .gallery-header {
@@ -426,7 +448,16 @@
     .album-card {
       flex-shrink: 0;
       position: relative;
-      transition: opacity 0.4s ease, transform 0.4s ease;
+      /* Die Breite ändert sich nur auf flachen Fenstern, wenn der Player
+         sonst keinen Platz fände — dann soll sie mitgleiten, nicht springen. */
+      transition: opacity 0.4s ease, transform 0.4s ease,
+                  width 0.7s cubic-bezier(0.22, 0.61, 0.36, 1);
+    }
+    .album-card .protected-cover-wrap {
+      transition: width 0.7s cubic-bezier(0.22, 0.61, 0.36, 1);
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .album-card, .album-card .protected-cover-wrap { transition: none; }
     }
 
     .album-card.center { z-index: 10; opacity: 1; transform: scale(1); }
