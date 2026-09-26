@@ -28,7 +28,7 @@ export default async function handler(req, res) {
         return res.json({ ok: true });
 
       case 'list': {
-        const [albums, tracks, gallery, site, analysed] = await Promise.all([
+        const [albums, tracks, gallery, site, analysed, resets] = await Promise.all([
           supabase.from('albums').select('*').order('sort_order', { ascending: true }),
           // eq_data bewusst NICHT mitladen — pro Track ~100 KB, die der
           // Admin für die Übersicht nicht braucht. Welche Tracks bereits
@@ -39,13 +39,51 @@ export default async function handler(req, res) {
           supabase.from('gallery_items').select('*').order('sort_order', { ascending: true }),
           supabase.from('site_content').select('*'),
           supabase.from('tracks').select('id').not('eq_data', 'is', null),
+          supabase.from('library_resets').select('album_id,reset_at'),
         ]);
         for (const r of [albums, tracks, gallery, site]) if (r.error) throw r.error;
         const analysedIds = analysed.error ? [] : (analysed.data || []).map((r) => r.id);
+        const libraryResets = {};
+        if (!resets.error) (resets.data || []).forEach((r) => { libraryResets[r.album_id] = r.reset_at; });
         return res.json({
           albums: albums.data, tracks: tracks.data, gallery: gallery.data, site: site.data,
-          analysedTrackIds: analysedIds,
+          analysedTrackIds: analysedIds, libraryResets,
         });
+      }
+
+      // Release aus allen Librarys nehmen. Es wird nur ein neuer Stand
+      // gesetzt — jeder Browser vergleicht beim nächsten Besuch und wirft
+      // ältere Einträge selbst raus. Die Zeit kommt vom Server.
+      case 'resetLibrary': {
+        const { albumId } = req.body;
+        if (!albumId) return res.status(400).json({ error: 'albumId fehlt' });
+        const { data, error } = await supabase.from('library_resets')
+          .upsert({ album_id: albumId, reset_at: new Date().toISOString() })
+          .select();
+        if (error) {
+          if (/library_resets/.test(error.message || '')) {
+            throw new Error('Table library_resets is missing — run supabase/migration_04.sql first.');
+          }
+          throw error;
+        }
+        return res.json({ ok: true, reset_at: data && data[0] && data[0].reset_at });
+      }
+
+      // Auswertung für das Dashboard, komplett in der Datenbank gerechnet.
+      case 'analytics': {
+        const { since, tz, bucket } = req.body;
+        const { data, error } = await supabase.rpc('analytics_summary', {
+          p_since: since || new Date(Date.now() - 7 * 864e5).toISOString(),
+          p_tz: tz || 'Europe/Zurich',
+          p_bucket: bucket === 'hour' ? 'hour' : 'day',
+        });
+        if (error) {
+          if (/analytics_summary|events/.test(error.message || '')) {
+            throw new Error('Analytics is not set up yet — run supabase/migration_04.sql first.');
+          }
+          throw error;
+        }
+        return res.json(data);
       }
 
       case 'saveAlbum': {

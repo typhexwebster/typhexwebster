@@ -114,6 +114,7 @@ export function markDownloaded(albumId, trackId) {
   const isNewAlbum = before.length === 0;
   times[albumId] = new Date().toISOString();
   writeTimes();
+  stampEpoch(albumId);
   if (before.includes(trackId)) { emit(); return false; }
   state[albumId] = [...before, trackId].sort((a, b) => a - b);
   write();
@@ -121,10 +122,61 @@ export function markDownloaded(albumId, trackId) {
   return isNewAlbum;
 }
 
+// ── Vom Admin angeordnete Entfernung ──────────────────────────────
+// Der Server kennt je Release höchstens einen Zeitpunkt der letzten
+// Entfernung ("Stand"). Jeder Download merkt sich, welcher Stand beim
+// Laden galt. Weicht der Stand des Servers davon ab, wurde das Release
+// seither entfernt — der Eintrag fliegt raus.
+//
+// Bewusst ein Vergleich der Stände und NICHT der Uhrzeiten: Die Uhr im
+// Gerät des Besuchers kann falsch gehen, der Stand kommt vom Server.
+// Downloads aus der Zeit vor dieser Funktion haben keinen Stand und
+// gelten damit als alt.
+const EPOCH_KEY = 'cargo_downloads_epoch_v1';
+let epochs = readEpochs();
+let knownResets = {};
+
+function readEpochs() {
+  try {
+    const raw = localStorage.getItem(EPOCH_KEY);
+    const o = raw ? JSON.parse(raw) : null;
+    return o && typeof o === 'object' ? o : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function writeEpochs() {
+  try { localStorage.setItem(EPOCH_KEY, JSON.stringify(epochs)); } catch (e) {}
+}
+
+function stampEpoch(albumId) {
+  epochs[albumId] = knownResets[albumId] || '';
+  writeEpochs();
+}
+
+// resets: { "album-id": "2026-09-26T14:00:00+00:00", ... }
+export function applyResets(resets) {
+  knownResets = resets || {};
+  let changed = false;
+  for (const albumId of Object.keys(knownResets)) {
+    if (!state[albumId]) continue;
+    if ((epochs[albumId] || '') !== knownResets[albumId]) {
+      delete state[albumId];
+      delete times[albumId];
+      delete epochs[albumId];
+      changed = true;
+    }
+  }
+  if (changed) { write(); writeTimes(); writeEpochs(); emit(); }
+}
+
 // Nur für den Notfall gedacht (z. B. später ein „Library leeren“ im Menü).
 export function forget(albumId) {
-  if (albumId) { delete state[albumId]; delete times[albumId]; } else { state = {}; times = {}; }
+  if (albumId) { delete state[albumId]; delete times[albumId]; delete epochs[albumId]; }
+  else { state = {}; times = {}; epochs = {}; }
   write();
   writeTimes();
+  writeEpochs();
   emit();
 }

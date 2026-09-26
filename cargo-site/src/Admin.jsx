@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from './supabaseClient.js';
 import { analyseAudio, formatDuration } from './eqBake.js';
 import { SITE_TEXTS } from './siteTexts.js';
+import { NO_TRACK_KEY } from './analytics.js';
 
 // ── Network helpers ──────────────────────────────────────────────────
 async function apiCall(pw, action, body = {}) {
@@ -203,8 +204,50 @@ function TrackRow({ pw, track, analysed, onChange, onDelete, toast }) {
   );
 }
 
+// ── Remove from every library ────────────────────────────────────────
+// Die Librarys liegen im Browser jedes Besuchers. Der Knopf setzt auf dem
+// Server einen neuen Stand; jeder Browser gleicht beim nächsten Besuch ab
+// und wirft das Release raus. Die Musik unter MUSIC bleibt unberührt.
+function LibraryReset({ pw, album, lastReset, onDone, toast }) {
+  const [busy, setBusy] = useState(false);
+  const fmt = (iso) => {
+    const d = new Date(iso);
+    return isNaN(d) ? '' : d.toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  };
+  const run = async () => {
+    const ok = confirm(
+      'Remove “' + (album.title || album.id) + '” from EVERY visitor\'s library?\n\n' +
+      '• It disappears from each library on that visitor\'s next visit.\n' +
+      '• The release stays in MUSIC — delete it there separately if needed.\n' +
+      '• Files people already saved on their devices cannot be touched.\n' +
+      '• Anyone who downloads it again afterwards keeps it.\n\n' +
+      'This cannot be undone.'
+    );
+    if (!ok) return;
+    setBusy(true);
+    try {
+      const r = await apiCall(pw, 'resetLibrary', { albumId: album.id });
+      toast('Removed from all libraries ✓');
+      onDone && onDone(album.id, r.reset_at);
+    } catch (e) { toast('Error: ' + e.message); } finally { setBusy(false); }
+  };
+  return (
+    <div style={{ marginTop: 18, border: `1px solid ${C.red}`, padding: 12 }}>
+      <div style={{ color: C.red, letterSpacing: '0.1em', fontSize: 12, marginBottom: 6 }}>LIBRARY</div>
+      <div style={{ color: C.dim, fontSize: 11, lineHeight: 1.6, marginBottom: 10 }}>
+        Takes this release out of every visitor&apos;s library at once — for when the music changed.
+        MUSIC is not affected.
+        {lastReset && <><br />Last removed: {fmt(lastReset)}</>}
+      </div>
+      <button style={S.btn} onClick={run} disabled={busy}>
+        {busy ? 'removing…' : 'Remove from all libraries'}
+      </button>
+    </div>
+  );
+}
+
 // ── Album editor ─────────────────────────────────────────────────────
-function AlbumEditor({ pw, album, tracks, analysedIds, onClose, onSaved, toast }) {
+function AlbumEditor({ pw, album, tracks, analysedIds, libraryResets, onLibraryReset, onClose, onSaved, toast }) {
   const [a, setA] = useState(album);
   const [ts, setTs] = useState(tracks);
   const [uploadingCover, setUploadingCover] = useState(false);
@@ -235,7 +278,7 @@ function AlbumEditor({ pw, album, tracks, analysedIds, onClose, onSaved, toast }
         copyright: a.copyright || null,
         release_date: a.release_date || null,
         download_format: a.download_format || 'M4A (AAC)',
-        in_library: !!a.in_library, published: a.published !== false,
+        published: a.published !== false,
         sort_order: Number(a.sort_order) || 0,
       };
       await apiCall(pw, 'saveAlbum', { row });
@@ -308,10 +351,12 @@ function AlbumEditor({ pw, album, tracks, analysedIds, onClose, onSaved, toast }
         <label style={{ color: C.dim, cursor: 'pointer' }}>
           <input type="checkbox" checked={a.published !== false} onChange={(e) => set('published', e.target.checked)} /> visible (published)
         </label>
-        <label style={{ color: C.dim, cursor: 'pointer' }}>
-          <input type="checkbox" checked={!!a.in_library} onChange={(e) => set('in_library', e.target.checked)} /> in “YOUR LIBRARY”
-        </label>
       </div>
+
+      {!isNew && (
+        <LibraryReset pw={pw} album={a} lastReset={libraryResets && libraryResets[a.id]}
+          onDone={onLibraryReset} toast={toast} />
+      )}
 
       <div style={{ marginTop: 20, borderTop: `1px solid ${C.line}`, paddingTop: 14 }}>
         <div style={{ color: C.red, letterSpacing: '0.1em', marginBottom: 10, fontSize: 13 }}>TRACKS</div>
@@ -376,6 +421,8 @@ function AlbumsTab({ pw, data, reload, toast }) {
     const tracks = (data.tracks || []).filter((t) => t.album_id === editing.id).sort((x, y) => x.track_no - y.track_no);
     return <AlbumEditor pw={pw} album={editing} tracks={editing.id ? tracks : []}
       analysedIds={data.analysedTrackIds || []} toast={toast}
+      libraryResets={data.libraryResets || {}}
+      onLibraryReset={() => reload()}
       onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload(); }} />;
   }
 
@@ -418,7 +465,7 @@ function AlbumsTab({ pw, data, reload, toast }) {
                 {al.cover_path && <img src={al.cover_path} alt="" style={{ width: 44, height: 44, objectFit: 'cover', border: `1px solid ${C.line}` }} />}
                 <div>
                   <div style={{ letterSpacing: '0.06em' }}>{al.title} {al.published === false && <span style={{ color: C.dim }}>(hidden)</span>}</div>
-                  <div style={{ color: C.dim, fontSize: 11 }}>{al.artist} · {n} tracks · {al.year || '—'}{al.in_library ? ' · LIBRARY' : ''}</div>
+                  <div style={{ color: C.dim, fontSize: 11 }}>{al.artist} · {n} tracks · {al.year || '—'}</div>
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
@@ -548,6 +595,296 @@ function SiteTab({ pw, data, toast }) {
   );
 }
 
+// ── Analytics tab ────────────────────────────────────────────────────
+// Holt die fertig gerechnete Auswertung alle 10 Sekunden neu, solange der
+// Reiter offen und das Fenster sichtbar ist. Keine fremden Bibliotheken,
+// die Grafik ist schlichtes SVG.
+const RANGES = [
+  { k: 'today', label: 'TODAY',   bucket: 'hour' },
+  { k: '24h',   label: '24 H',    bucket: 'hour', ms: 864e5 },
+  { k: '7d',    label: '7 DAYS',  bucket: 'day',  ms: 7 * 864e5 },
+  { k: '30d',   label: '30 DAYS', bucket: 'day',  ms: 30 * 864e5 },
+  { k: '90d',   label: '90 DAYS', bucket: 'day',  ms: 90 * 864e5 },
+  { k: 'all',   label: 'ALL',     bucket: 'day' },
+];
+
+const METRICS = [
+  { k: 'visitors',  label: 'Visitors' },
+  { k: 'views',     label: 'Page views' },
+  { k: 'plays',     label: 'Plays' },
+  { k: 'downloads', label: 'Downloads' },
+];
+
+const SECTION_LABELS = {
+  landing: 'Start page (ENTER)', menu: 'Menu', music: 'MUSIC', library: 'LIBRARY',
+  cargo: 'CARGO', store: 'STORE', contact: 'CONTACT',
+};
+
+const regionNames = (() => {
+  try { return new Intl.DisplayNames(['en'], { type: 'region' }); } catch (e) { return null; }
+})();
+function countryLabel(code) {
+  if (!code || code === '??' || code.length !== 2) return '🏳 Unknown';
+  const flag = String.fromCodePoint(...[...code.toUpperCase()].map((c) => 0x1f1e6 + c.charCodeAt(0) - 65));
+  let name = code;
+  try { name = (regionNames && regionNames.of(code.toUpperCase())) || code; } catch (e) {}
+  return `${flag} ${name}`;
+}
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+// "2026-09-26T14:00" — schon in der eigenen Zeitzone gerechnet.
+function bucketLabel(b, bucket) {
+  const [d, t] = String(b).split('T');
+  const [, m, day] = d.split('-');
+  if (bucket === 'hour') return (t || '').slice(0, 2) + ':00';
+  return `${Number(day)} ${MONTHS[Number(m) - 1] || ''}`;
+}
+
+const fmtNum = (n) => Number(n || 0).toLocaleString('en-US');
+
+function Stat({ label, value, sub }) {
+  return (
+    <div style={{ ...S.card, marginBottom: 0, padding: 14 }}>
+      <div style={{ color: C.dim, fontSize: 10, letterSpacing: '0.12em' }}>{label}</div>
+      <div style={{ fontSize: 26, marginTop: 6, letterSpacing: '0.04em' }}>{fmtNum(value)}</div>
+      {sub && <div style={{ color: C.dim, fontSize: 10, marginTop: 4 }}>{sub}</div>}
+    </div>
+  );
+}
+
+function Chart({ series, metric, bucket }) {
+  const W = 860, H = 180, PAD_B = 22, PAD_T = 14;
+  const vals = series.map((p) => Number(p[metric]) || 0);
+  const max = Math.max(1, ...vals);
+  const n = Math.max(1, series.length);
+  const slot = W / n;
+  const bw = Math.max(1, Math.min(28, slot * 0.7));
+  // Beschriftung nur an jeder k-ten Säule, damit nichts übereinanderliegt.
+  const every = Math.max(1, Math.ceil(n / 12));
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
+      <line x1="0" x2={W} y1={H - PAD_B} y2={H - PAD_B} stroke={C.line} />
+      <text x="0" y="10" fill={C.dim} fontSize="10" fontFamily="inherit">max {fmtNum(max)}</text>
+      {series.map((p, i) => {
+        const v = vals[i];
+        const h = (v / max) * (H - PAD_B - PAD_T);
+        const x = i * slot + (slot - bw) / 2;
+        return (
+          <g key={p.b}>
+            <rect x={x} y={H - PAD_B - h} width={bw} height={Math.max(v ? 1 : 0, h)} fill={C.red}>
+              <title>{`${bucketLabel(p.b, bucket)} — ${fmtNum(v)}`}</title>
+            </rect>
+            {i % every === 0 && (
+              <text x={i * slot + slot / 2} y={H - 6} fill={C.dim} fontSize="10" textAnchor="middle" fontFamily="inherit">
+                {bucketLabel(p.b, bucket)}
+              </text>
+            )}
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+// Liste mit Balken im Hintergrund.
+function BarList({ title, rows, label, value, sub, empty = 'No data yet.' }) {
+  const max = Math.max(1, ...rows.map((r) => Number(value(r)) || 0));
+  return (
+    <div style={{ ...S.card, marginBottom: 0 }}>
+      <div style={{ color: C.red, fontSize: 11, letterSpacing: '0.12em', marginBottom: 10 }}>{title}</div>
+      {!rows.length && <div style={{ color: C.dim, fontSize: 11 }}>{empty}</div>}
+      {rows.map((r, i) => {
+        const v = Number(value(r)) || 0;
+        return (
+          <div key={i} style={{ position: 'relative', padding: '5px 8px', marginBottom: 3, fontSize: 12 }}>
+            <div style={{ position: 'absolute', inset: 0, width: `${(v / max) * 100}%`, background: 'rgba(200,64,42,0.18)' }} />
+            <div style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label(r)}</span>
+              <span style={{ whiteSpace: 'nowrap' }}>
+                {fmtNum(v)}{sub && <span style={{ color: C.dim }}> {sub(r)}</span>}
+              </span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function eventText(e) {
+  const song = e.track_title ? `${e.track_title}${e.album_title ? ' — ' + e.album_title : ''}` : (e.album_title || '');
+  if (e.type === 'play') return ['▶ played', song];
+  if (e.type === 'download') return [e.redownload ? '↻ re-downloaded' : '↓ downloaded', song];
+  if (e.album_title) return ['◉ opened', e.album_title];
+  return ['◉ visited', SECTION_LABELS[e.section] || e.section || '—'];
+}
+
+function AnalyticsTab({ pw }) {
+  const [range, setRange] = useState('today');
+  const [metric, setMetric] = useState('visitors');
+  const [data, setData] = useState(null);
+  const [err, setErr] = useState('');
+  const [updated, setUpdated] = useState(null);
+  const [excluded, setExcluded] = useState(() => {
+    try { return localStorage.getItem(NO_TRACK_KEY) === '1'; } catch (e) { return false; }
+  });
+  const reqId = useRef(0);
+
+  const toggleExcluded = (on) => {
+    try {
+      if (on) localStorage.setItem(NO_TRACK_KEY, '1');
+      else localStorage.setItem(NO_TRACK_KEY, '0');
+    } catch (e) {}
+    setExcluded(on);
+  };
+
+  const R = RANGES.find((r) => r.k === range) || RANGES[0];
+
+  const load = useCallback(async () => {
+    const my = ++reqId.current;
+    let since;
+    if (R.k === 'today') { const d = new Date(); d.setHours(0, 0, 0, 0); since = d; }
+    else if (R.k === 'all') since = new Date(0);
+    else since = new Date(Date.now() - R.ms);
+    const tz = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch (e) { return 'Europe/Zurich'; } })();
+    try {
+      const d = await apiCall(pw, 'analytics', { since: since.toISOString(), tz, bucket: R.bucket });
+      if (my !== reqId.current) return; // eine neuere Abfrage läuft schon
+      setData(d); setErr(''); setUpdated(new Date());
+    } catch (e) {
+      if (my === reqId.current) setErr(e.message);
+    }
+  }, [pw, R]);
+
+  useEffect(() => {
+    load();
+    const id = setInterval(() => { if (!document.hidden) load(); }, 10000);
+    const onVis = () => { if (!document.hidden) load(); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => { clearInterval(id); document.removeEventListener('visibilitychange', onVis); };
+  }, [load]);
+
+  const t = (data && data.totals) || {};
+  const grid = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12, marginBottom: 12 };
+
+  return (
+    <div>
+      {/* Kopf: live + Zeitraum */}
+      <div style={{ ...S.row, flexWrap: 'wrap', marginBottom: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{
+            width: 9, height: 9, borderRadius: '50%', background: data && data.live ? '#3c3' : C.dim,
+            boxShadow: data && data.live ? '0 0 8px #3c3' : 'none', display: 'inline-block',
+          }} />
+          <span style={{ fontSize: 13, letterSpacing: '0.08em' }}>
+            {data ? fmtNum(data.live) : '–'} ONLINE NOW
+          </span>
+          {data && data.live_sections && data.live_sections.length > 0 && (
+            <span style={{ color: C.dim, fontSize: 11 }}>
+              ({data.live_sections.map((s) => `${SECTION_LABELS[s.k] || s.k} ${s.n}`).join(' · ')})
+            </span>
+          )}
+        </div>
+        <div style={{ color: C.dim, fontSize: 10 }}>
+          {updated ? `updated ${updated.toLocaleTimeString('en-GB')} · refreshes every 10 s` : 'loading…'}
+        </div>
+      </div>
+
+      <div style={{ ...S.tabs, marginBottom: 14 }}>
+        {RANGES.map((r) => (
+          <button key={r.k} style={S.tab(range === r.k)} onClick={() => setRange(r.k)}>{r.label}</button>
+        ))}
+      </div>
+
+      {err && <div style={{ ...S.card, borderColor: C.red, color: C.red, fontSize: 12 }}>{err}</div>}
+
+      {data && (
+        <>
+          <div style={{ ...grid, gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}>
+            <Stat label="VISITORS" value={t.visitors} />
+            <Stat label="PAGE VIEWS" value={t.views} />
+            <Stat label="PLAYS" value={t.plays} sub={`${fmtNum(t.listeners)} listeners`} />
+            <Stat label="DOWNLOADS" value={t.downloads} sub={`+ ${fmtNum(t.redownloads)} re-downloads`} />
+          </div>
+
+          <div style={{ ...S.card }}>
+            <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
+              {METRICS.map((m) => (
+                <button key={m.k} style={{ ...S.btnGhost, padding: '4px 10px', fontSize: 11,
+                  borderColor: metric === m.k ? C.red : C.line, color: metric === m.k ? C.red : C.dim }}
+                  onClick={() => setMetric(m.k)}>{m.label}</button>
+              ))}
+            </div>
+            <Chart series={data.series || []} metric={metric} bucket={R.bucket} />
+          </div>
+
+          <div style={grid}>
+            <BarList title="MOST PLAYED" rows={data.top_plays || []}
+              label={(r) => `${r.title || 'Track ' + r.no}${r.album ? ' — ' + r.album : ''}`}
+              value={(r) => r.n} sub={(r) => `(${fmtNum(r.u)} people)`} />
+            <BarList title="MOST DOWNLOADED" rows={data.top_downloads || []}
+              label={(r) => `${r.title || 'Track ' + r.no}${r.album ? ' — ' + r.album : ''}`}
+              value={(r) => r.n} sub={(r) => (r.r ? `(+${fmtNum(r.r)} re)` : '')} />
+          </div>
+
+          <div style={grid}>
+            <BarList title="DOWNLOADS PER RELEASE" rows={data.release_downloads || []}
+              label={(r) => r.k || '—'} value={(r) => r.n} sub={(r) => `(${fmtNum(r.u)} people)`} />
+            <BarList title="RELEASES OPENED" rows={data.releases_opened || []}
+              label={(r) => r.k || '—'} value={(r) => r.n} sub={(r) => `(${fmtNum(r.u)} people)`} />
+          </div>
+
+          <div style={grid}>
+            <BarList title="SECTIONS" rows={data.sections || []}
+              label={(r) => SECTION_LABELS[r.k] || r.k} value={(r) => r.n} sub={(r) => `(${fmtNum(r.u)} people)`} />
+            <BarList title="COUNTRIES" rows={data.countries || []}
+              label={(r) => countryLabel(r.k)} value={(r) => r.n} />
+          </div>
+
+          <div style={grid}>
+            <BarList title="DEVICES" rows={data.devices || []}
+              label={(r) => r.k.charAt(0).toUpperCase() + r.k.slice(1)} value={(r) => r.n} />
+            <BarList title="OPERATING SYSTEMS" rows={data.os || []} label={(r) => r.k} value={(r) => r.n} />
+          </div>
+
+          <div style={grid}>
+            <BarList title="BROWSERS & APPS" rows={data.browsers || []} label={(r) => r.k} value={(r) => r.n} />
+            <BarList title="COMING FROM" rows={data.referrers || []} label={(r) => r.k} value={(r) => r.n}
+              empty="Nobody arrived via a link yet — direct visits aren't listed." />
+          </div>
+
+          <div style={{ ...S.card }}>
+            <div style={{ color: C.red, fontSize: 11, letterSpacing: '0.12em', marginBottom: 10 }}>LIVE FEED</div>
+            {!(data.recent || []).length && <div style={{ color: C.dim, fontSize: 11 }}>Nothing yet.</div>}
+            {(data.recent || []).map((e, i) => {
+              const [what, detail] = eventText(e);
+              return (
+                <div key={i} style={{ display: 'grid', gridTemplateColumns: '64px 130px 1fr auto', gap: 10,
+                  fontSize: 11, padding: '4px 0', borderBottom: `1px solid ${C.line}` }}>
+                  <span style={{ color: C.dim }}>{new Date(e.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+                  <span style={{ color: e.type === 'view' ? C.dim : C.red }}>{what}</span>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{detail}</span>
+                  <span style={{ color: C.dim, whiteSpace: 'nowrap' }}>{countryLabel(e.country).split(' ')[0]} {e.device || ''}</span>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      <div style={{ color: C.dim, fontSize: 10, lineHeight: 1.7, marginTop: 8 }}>
+        <label style={{ cursor: 'pointer', color: C.white, fontSize: 11 }}>
+          <input type="checkbox" checked={excluded} onChange={(e) => toggleExcluded(e.target.checked)} />
+          {' '}Don&apos;t count my visits on this device
+        </label>
+        <br />
+        Visitors are counted per day without cookies and without storing IP addresses —
+        someone who comes back tomorrow counts again. Bots and link previews are ignored.
+      </div>
+    </div>
+  );
+}
+
 // ── Root ─────────────────────────────────────────────────────────────
 export default function Admin() {
   const [pw, setPw] = useState(() => sessionStorage.getItem('cargo_admin_pw') || '');
@@ -575,6 +912,14 @@ export default function Admin() {
 
   useEffect(() => { if (pw) reload(); }, []); // eslint-disable-line
 
+  // Wer sich hier einloggt, ist der Betreiber — seine eigenen Besuche
+  // sollen die Zahlen nicht verfälschen. Nur beim allerersten Mal
+  // gesetzt; im Analytics-Reiter lässt es sich wieder abschalten.
+  useEffect(() => {
+    if (!authed) return;
+    try { if (localStorage.getItem(NO_TRACK_KEY) === null) localStorage.setItem(NO_TRACK_KEY, '1'); } catch (e) {}
+  }, [authed]);
+
   if (!supabase) return <div style={S.page}><div style={S.h1}>CARGO — ADMIN</div><div style={{ color: C.red }}>Supabase is not configured (VITE variables are missing).</div></div>;
   if (!authed) return <Login onOk={(p) => { setPw(p); setAuthed(true); apiCall(p, 'list').then(setData).catch(() => {}); }} />;
 
@@ -588,11 +933,13 @@ export default function Admin() {
         <button style={S.tab(tab === 'albums')} onClick={() => setTab('albums')}>ALBUMS</button>
         <button style={S.tab(tab === 'gallery')} onClick={() => setTab('gallery')}>GALLERY</button>
         <button style={S.tab(tab === 'site')} onClick={() => setTab('site')}>TEXTS</button>
+        <button style={S.tab(tab === 'analytics')} onClick={() => setTab('analytics')}>ANALYTICS</button>
         <button style={S.tab(false)} onClick={reload}>↻ reload</button>
       </div>
       {tab === 'albums' && <AlbumsTab pw={pw} data={data} reload={reload} toast={toast} />}
       {tab === 'gallery' && <GalleryTab pw={pw} data={data} reload={reload} toast={toast} />}
       {tab === 'site' && <SiteTab pw={pw} data={data} toast={toast} />}
+      {tab === 'analytics' && <AnalyticsTab pw={pw} />}
       {toastMsg && <div style={S.toast}>{toastMsg}</div>}
     </div>
   );

@@ -8,6 +8,7 @@
 // sehen danach automatisch die geladenen Daten.
 // ─────────────────────────────────────────────────────────────
 import { supabase, R2_PUBLIC_URL, SUPABASE_URL } from './supabaseClient.js';
+import { applyResets } from './downloads.js';
 
 export let ALBUMS = [];
 export let LIBRARY_IDS = [];
@@ -32,7 +33,7 @@ function resolveAudio(path) {
 
 export async function loadContent() {
   if (!supabase) { console.warn('[cargo] Supabase nicht konfiguriert – überspringe Laden.'); return; }
-  const [albumsRes, tracksRes, galleryRes, siteRes] = await Promise.all([
+  const [albumsRes, tracksRes, galleryRes, siteRes, resetsRes] = await Promise.all([
     supabase.from('albums').select('*').eq('published', true).order('sort_order', { ascending: true }),
     // Bewusst OHNE eq_data: die Frequenzdaten sind pro Track ~100 KB und
     // würden den Seitenstart aufblähen. Sie werden erst geladen, wenn ein
@@ -42,7 +43,16 @@ export async function loadContent() {
       .order('track_no', { ascending: true }),
     supabase.from('gallery_items').select('*').eq('published', true).order('sort_order', { ascending: true }),
     supabase.from('site_content').select('*'),
+    // Vom Admin angeordnete Entfernungen aus den Librarys. Fehlt die
+    // Tabelle noch (Migration 04 nicht ausgeführt), läuft alles normal.
+    supabase.from('library_resets').select('album_id,reset_at'),
   ]);
+
+  if (resetsRes && !resetsRes.error && resetsRes.data) {
+    const map = {};
+    resetsRes.data.forEach((r) => { map[r.album_id] = r.reset_at; });
+    applyResets(map);
+  }
 
   if (albumsRes.error) { console.error('[cargo] albums:', albumsRes.error.message); return; }
 

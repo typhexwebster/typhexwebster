@@ -10,6 +10,7 @@ import {
 import { ALBUMS, COVER_IMAGES, GALLERY, SITE, loadTrackEq } from './content.js';
 import * as eqData from './eqData.js';
 import * as downloads from './downloads.js';
+import * as analytics from './analytics.js';
 import * as beatMotion from './beatMotion.js';
 import { siteText } from './siteTexts.js';
 import * as imageLoader from './imageLoader.js';
@@ -1392,6 +1393,7 @@ const AlbumDetail = ({ album, onBack, onPlay, currentTrack, isPlaying, variant =
           setTrackProgress(t.id, p === null ? 0.5 : p)
           );
           files.push({ name: trackFilename(t), bytes });
+          analytics.trackDownload(album, t, true);
           setRedlDone((p) => [...p, t.id]);
         } catch (err) {
           console.warn('[re-download]', t.title, err && err.message);
@@ -1464,6 +1466,7 @@ const AlbumDetail = ({ album, onBack, onPlay, currentTrack, isPlaying, variant =
       setTrackProgress(track.id, p === null ? 0.5 : p)
       );
       saveBlob(new Blob([bytes], { type: 'audio/mp4' }), trackFilename(track));
+      analytics.trackDownload(album, track);
       const isNewForLibrary = downloads.markDownloaded(album.id, track.id);
       if (isNewForLibrary) openThanks(el);
     } catch (e) {
@@ -1492,6 +1495,7 @@ const AlbumDetail = ({ album, onBack, onPlay, currentTrack, isPlaying, variant =
           setTrackProgress(t.id, p === null ? 0.5 : p)
           );
           files.push({ name: trackFilename(t), bytes });
+          analytics.trackDownload(album, t);
           if (downloads.markDownloaded(album.id, t.id)) isNewForLibrary = true;
         } catch (e) {
           console.warn('[download]', t.title, e && e.message);
@@ -1617,7 +1621,10 @@ const AlbumDetail = ({ album, onBack, onPlay, currentTrack, isPlaying, variant =
               sie leer, fehlt die Zeile ganz. */}
           <div className="detail-meta">
             <div className="detail-meta-line">
-              {isLibrary ? visibleTracks.length : album.totalTracks} Songs, {album.duration}
+              {(() => {
+          const n = isLibrary ? visibleTracks.length : album.totalTracks;
+          return `${n} ${n === 1 ? 'Song' : 'Songs'}`;
+        })()}, {album.duration}
             </div>
             {album.copyright &&
         <div className="detail-meta-line">{album.copyright}</div>
@@ -2544,6 +2551,33 @@ const App = () => {
     document.title = section ? `${section} - ${SITE_TITLE}` : SITE_TITLE;
   }, [screen]);
 
+  // ── Besucherzählung ───────────────────────────────────────────────
+  // Ein Aufruf zählt erst, wenn man kurz in einem Bereich bleibt. So
+  // zählt beim Start nicht fälschlich die Startseite mit, bevor der
+  // zuletzt besuchte Bereich wiederhergestellt ist, und schnelles
+  // Durchklicken erzeugt keine Flut an Einträgen.
+  // Das Öffnen eines Releases zählt separat — mit Titel.
+  const lastViewRef = useRef('');
+  useEffect(() => {
+    const key = `${screen}|${selectedAlbum ? selectedAlbum.id : ''}`;
+    const id = setTimeout(() => {
+      if (lastViewRef.current === key) return;
+      lastViewRef.current = key;
+      analytics.trackView(screen === 'hub' ? 'menu' : screen, selectedAlbum || null);
+    }, 600);
+    return () => clearTimeout(id);
+  }, [screen, selectedAlbum]);
+
+  // Ein Abspielen zählt einmal je Liedstart — nicht erneut nach Pause.
+  // Jede Auswahl eines Liedes erzeugt ein neues currentTrack-Objekt,
+  // daran erkennt man den Neustart.
+  const countedPlayRef = useRef(null);
+  const handlePlaying = () => {
+    if (!currentTrack || !currentAlbum || countedPlayRef.current === currentTrack) return;
+    countedPlayRef.current = currentTrack;
+    analytics.trackPlay(currentAlbum, currentTrack, screen === 'hub' ? 'menu' : screen);
+  };
+
   // Tweaks
   const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
 
@@ -2874,7 +2908,9 @@ const App = () => {
               <CargoPage onBeatStart={() => setIsPlaying(false)} />
             </div>
       }
-          {screen === 'store' && <div className="main-page page"><StorePage /></div>}
+          {/* Im Store steht nur ein Wort — nichts zu scrollen, deshalb
+              dieselbe Sperre wie in MUSIC und der leeren Library. */}
+          {screen === 'store' && <div className="main-page page page-locked"><StorePage /></div>}
           {screen === 'contact' && <div className="main-page page contact-page-wrap"><ContactPage /></div>}
 
           <MediaPanel open={bagOpen} onClose={() => setBagOpen(false)} />
@@ -2908,6 +2944,7 @@ const App = () => {
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={() => { const a = audioRef.current; if (a && isFinite(a.duration)) setAudioDur(a.duration); }}
         onEnded={handleTrackEnd}
+        onPlaying={handlePlaying}
         style={{ display: 'none' }} />
 
 
