@@ -712,54 +712,6 @@ const NavOverlay = ({ open, onClose, onNavigate }) => {
 
 // ─── LANDING PAGE ───────────────────────────────────────────────────
 const LandingPage = ({ onEnter, scanlines = true, glow = true, tweaks = {} }) => {
-  const [ship, setShip] = React.useState(null);
-  const rafRef = React.useRef(null);
-  const startRef = React.useRef(null);
-  const shipDataRef = React.useRef(null);
-
-  const launchShip = React.useCallback(() => {
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-    // Always fly from top-left to bottom-right
-    const sx = Math.random() * vw * 0.4; // start in left 40%
-    const sy = -80;
-    const ex = vw * 0.6 + Math.random() * vw * 0.4; // end in right 60%
-    const ey = vh + 80;
-    const dx = ex - sx;
-    const dy = ey - sy;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    const duration = dist / 200;
-    const angle = Math.atan2(dy, dx) * 180 / Math.PI;
-
-    shipDataRef.current = { sx, sy, ex, ey, dx, dy, duration, angle };
-    if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    startRef.current = null;
-
-    const animate = (ts) => {
-      if (!startRef.current) startRef.current = ts;
-      const elapsed = (ts - startRef.current) / 1000;
-      const t = Math.min(elapsed / duration, 1);
-      const d = shipDataRef.current;
-      const x = d.sx + d.dx * t;
-      const y = d.sy + d.dy * t;
-      const opacity = t < 0.08 ? t / 0.08 : t > 0.92 ? (1 - t) / 0.08 : 1;
-      setShip({ x, y, opacity, angle: d.angle });
-      if (t < 1) rafRef.current = requestAnimationFrame(animate);else
-      setShip(null);
-    };
-    rafRef.current = requestAnimationFrame(animate);
-  }, []);
-
-  React.useEffect(() => {
-    const first = setTimeout(launchShip, 3000);
-    const interval = setInterval(launchShip, 10000);
-    return () => {
-      clearTimeout(first);
-      clearInterval(interval);
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    };
-  }, []);
-
   // ── Hintergrundfilm ────────────────────────────────────────────────
   // Läuft stumm in Dauerschleife hinter dem ENTER-Knopf. Auf schmalen
   // Geräten laden wir die kleinere Fassung — 1,5 statt 3,4 MB.
@@ -802,31 +754,6 @@ const LandingPage = ({ onEnter, scanlines = true, glow = true, tweaks = {} }) =>
         {glow && <div className="landing-glow" />}
         <div className="landing-noise" />
         {scanlines && <div className="landing-scanlines" />}
-
-        {ship &&
-      <div
-        className="spaceship"
-        style={{
-          left: ship.x,
-          top: ship.y,
-          opacity: ship.opacity,
-          perspective: '600px'
-        }}>
-        
-            <img
-          src="/uploads/Naboo_Royal_Starship_SWE.webp"
-          alt=""
-          style={{
-            width: 130,
-            height: 'auto',
-            display: 'block',
-            transform: `rotate(${ship.angle}deg)`,
-            filter: 'drop-shadow(0 6px 16px rgba(160,160,255,0.5))',
-            transformOrigin: 'center center'
-          }} />
-        
-          </div>
-      }
 
         <div className="landing-content">
           <button className="enter-btn" onClick={onEnter}>{tweaks.landingBtn || 'ENTER'}</button>
@@ -915,17 +842,21 @@ function inkOverhang(el) {
 
 // ─── EINZEILIGER TITEL MIT LAUFTEXT ─────────────────────────────────
 // Ein Titel bricht nie um. Passt er in die Breite, steht er einfach da.
-// Passt er nicht, verhält er sich wie im Player von Apple: er steht vier
-// Sekunden still, wandert dann gleichmäßig nach links bis zum Ende, wartet
-// dort wieder und gleitet zurück an den Anfang. Die Ränder sind weich
-// ausgeblendet, damit der Text nicht hart abgeschnitten wirkt.
+// Passt er nicht, fährt er durch: er steht vier Sekunden still, wandert
+// dann gleichmäßig nach links aus dem Bild und kommt gleichzeitig rechts
+// wieder herein — ohne sichtbare Naht und ohne Zurückspringen.
+//
+// Der Trick dahinter: es stehen zwei gleiche Abzüge des Titels hinter-
+// einander, getrennt durch eine feste Lücke. Sobald der zweite Abzug genau
+// dort angekommen ist, wo der erste startete, setzen wir ohne Übergang auf
+// Null zurück. Das Bild ist in diesem Moment identisch, man sieht nichts.
 //
 // Gemessen wird die tatsächliche Textbreite gegen die verfügbare Breite —
 // nicht geschätzt. Ändert sich das Fenster oder der Text, wird neu gemessen.
 const OneLine = ({ text, className = '', style, animate = true, measureRef = null }) => {
   const boxRef = useRef(null);
   const innerRef = useRef(null);
-  const [over, setOver] = useState(0);   // wie viele Pixel zu breit
+  const [size, setSize] = useState({ textW: 0, boxW: 0 });
   const [shift, setShift] = useState(0); // aktuelle Verschiebung
   const [moveMs, setMoveMs] = useState(0);
 
@@ -936,9 +867,12 @@ const OneLine = ({ text, className = '', style, animate = true, measureRef = nul
       if (!box || !inner) return;
       // Breite 0 heißt: gerade nicht sichtbar (eingeklappter Player o. ä.).
       // Dann messen wir nicht, sonst würde alles als "zu breit" gelten.
-      if (!box.clientWidth) { setOver(0); return; }
-      const diff = Math.ceil(inner.scrollWidth - box.clientWidth);
-      setOver(diff > 1 ? diff : 0);
+      const boxW = box.clientWidth;
+      if (!boxW) { setSize({ textW: 0, boxW: 0 }); return; }
+      const textW = Math.ceil(inner.getBoundingClientRect().width);
+      setSize((prev) =>
+        Math.abs(prev.textW - textW) < 1 && Math.abs(prev.boxW - boxW) < 1 ?
+        prev : { textW, boxW });
     };
     measure();
     let ro = null;
@@ -961,46 +895,48 @@ const OneLine = ({ text, className = '', style, animate = true, measureRef = nul
   // ── wandern ──
   const reduced = typeof window !== 'undefined' && window.matchMedia &&
     window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const running = over > 0 && animate && !reduced;
+  const running = size.textW > size.boxW + 1 && animate && !reduced;
 
-  // Vier Zustände, genau wie im Apple-Player:
-  //   start   — steht am Anfang, nur rechts ein Fade (dort geht es weiter)
-  //   toEnd   — wandert nach links, beide Seiten weich
-  //   end     — steht am Ende, nur links ein Fade (dort kam es her)
-  //   toStart — gleitet zurück, beide Seiten weich
-  const [stage, setStage] = useState('start');
+  // Lücke zwischen Ende und neuem Anfang — knapp eine Handbreit, an der
+  // Breite des Feldes bemessen, damit sie überall stimmig wirkt.
+  const gap = running ? Math.max(48, Math.round(size.boxW * 0.35)) : 0;
+
+  // Zwei Zustände: 'rest' steht vier Sekunden am Anfang, 'run' fährt eine
+  // volle Runde durch.
+  const [stage, setStage] = useState('rest');
 
   useEffect(() => {
     setShift(0);
     setMoveMs(0);
-    setStage('start');
+    setStage('rest');
     if (!running) return;
-    const HOLD = 4000;                                  // Standzeit an beiden Enden
-    const travel = Math.max(700, Math.round(over * 22)); // ~45 px pro Sekunde
+    const HOLD = 4000;                 // Standzeit am Anfang
+    const dist = size.textW + gap;     // Weg einer vollen Runde
+    const travel = Math.max(700, Math.round(dist / 45 * 1000)); // ~45 px/s
     let timer = null;
-    const go = (next) => {
-      setStage(next);
-      if (next === 'toEnd') {
-        setMoveMs(travel); setShift(-over);
-        timer = setTimeout(() => go('end'), travel);
-      } else if (next === 'end') {
-        timer = setTimeout(() => go('toStart'), HOLD);
-      } else if (next === 'toStart') {
-        setMoveMs(travel); setShift(0);
-        timer = setTimeout(() => go('start'), travel);
-      } else {
-        timer = setTimeout(() => go('toEnd'), HOLD);
-      }
+    const cycle = () => {
+      setStage('run');
+      setMoveMs(travel);
+      setShift(-dist);
+      timer = setTimeout(() => {
+        // Ohne Übergang zurück auf Null. Der zweite Abzug steht jetzt exakt
+        // dort, wo der erste stand — das Bild ist identisch, der Sprung
+        // unsichtbar.
+        setMoveMs(0);
+        setShift(0);
+        setStage('rest');
+        timer = setTimeout(cycle, HOLD);
+      }, travel);
     };
-    timer = setTimeout(() => go('toEnd'), HOLD);
+    timer = setTimeout(cycle, HOLD);
     return () => clearTimeout(timer);
-  }, [running, over, text]);
+  }, [running, size.textW, gap, text]);
 
-  // Fade-Breiten: rechts nur, solange rechts noch Text wartet; links nur,
-  // sobald der Text den Anfang verlassen hat.
+  // Fade-Breiten: in der Pause nur rechts, denn dort wartet der Text.
+  // Sobald er fährt, beide Seiten — er taucht rechts auf und geht links weg.
   const FADE = 16;
-  const fadeL = running && stage !== 'start' ? FADE : 0;
-  const fadeR = running && stage !== 'end' ? FADE : 0;
+  const fadeL = running && stage === 'run' ? FADE : 0;
+  const fadeR = running ? FADE : 0;
 
   return (
     <div
@@ -1014,12 +950,16 @@ const OneLine = ({ text, className = '', style, animate = true, measureRef = nul
       style={{ ...style, '--fade-l': `${fadeL}px`, '--fade-r': `${fadeR}px` }}
       title={text}>
       <span
-        ref={innerRef}
         className="one-line-in"
         style={{
           transform: `translateX(${shift}px)`,
-          transition: moveMs ? `transform ${moveMs}ms cubic-bezier(0.4,0,0.2,1)` : 'none'
-        }}>{text}</span>
+          // Gleichmäßig, ohne Beschleunigen oder Abbremsen — sonst wäre an
+          // der Nahtstelle jeder Runde ein Ruck zu sehen.
+          transition: moveMs ? `transform ${moveMs}ms linear` : 'none'
+        }}>
+        <span ref={innerRef} style={running ? { marginRight: gap } : undefined}>{text}</span>
+        {running ? <span aria-hidden="true">{text}</span> : null}
+      </span>
     </div>);
 
 };
@@ -1090,7 +1030,7 @@ const MusicGallery = ({ active, onActiveChange, onSelectAlbum, tweaks, playerOpe
   // Bei offenem Player rückt alles enger zusammen; das ist die einzige
   // Stelle, an der dieser Abstand definiert wird.
   const ROW_GAP_BASE = 24;
-  const ROW_GAP = playerOpen ? 12 : ROW_GAP_BASE;
+  const ROW_GAP_MIN = 12;
   // Der Beschrieb sitzt unter dem Karussell, dessen unterer Innenabstand
   // (12 px) optisch schon ein Teil der Lücke ist — deshalb hier abziehen,
   // damit beide Lücken gleich aussehen.
@@ -1109,29 +1049,39 @@ const MusicGallery = ({ active, onActiveChange, onSelectAlbum, tweaks, playerOpe
   );
 
   // ── Platz schaffen, wenn der Player offen ist ──────────────────────
-  // Erste Quelle: der engere Zeilenabstand. Zweite: der ganze Block rückt
-  // nach oben, aber nur so weit, dass oben ein Rest bleibt — sonst würde
-  // das Cover unter den Kopfbereich rutschen. Reicht beides nicht (flache
-  // Fenster), darf drittens das Cover kleiner werden.
+  // Der Zeilenabstand soll so weit wie möglich bei 24 px bleiben — er wird
+  // nur dort enger, wo es wirklich nötig ist. Deshalb probieren wir von
+  // oben nach unten: zuerst 24, dann 23, 22 … bis höchstens 12. Für jeden
+  // Wert darf der Block zusätzlich nach oben rücken, aber nur so weit, dass
+  // oben ein Rest bleibt — sonst würde das Cover unter den Kopfbereich
+  // geraten. Der erste Wert, bei dem der Player frei steht, gewinnt.
+  // Reicht selbst 12 px nicht (sehr flache Fenster), darf zuletzt das
+  // Cover kleiner werden.
   const containerH = vh - HEADER_H;
   const playerSpace = Math.max(146, Math.min(vh * 0.17, 178));
-  const fitFor = (card) => {
-    const contentH = PAD_V + card + TITLE_BLOCK + belowFor(ROW_GAP);
+  const fitFor = (card, gap) => {
+    const contentH = PAD_V + card + TITLE_BLOCK + belowFor(gap);
     const slack = Math.max(0, (containerH - contentH) / 2);
     const lift = Math.round(Math.max(0, Math.min(playerSpace - slack, slack - 8)));
     return { lift, free: slack + lift };
   };
   let CARD = CARD_BASE;
+  let ROW_GAP = ROW_GAP_BASE;
   let lift = 0;
   if (playerOpen) {
+    let gap = ROW_GAP_BASE;
+    let fit = fitFor(CARD_BASE, gap);
+    while (fit.free < playerSpace - 0.5 && gap > ROW_GAP_MIN) {
+      gap -= 1;
+      fit = fitFor(CARD_BASE, gap);
+    }
     let card = CARD_BASE;
-    let fit = fitFor(card);
-    // Schrittweise verkleinern, bis der Player frei steht. Auf Handys
-    // greift das nie — dort reicht der Hub, das Cover bleibt gleich groß.
+    // Letzte Reserve: das Cover. Greift auf Handys nie.
     while (fit.free < playerSpace - 0.5 && card > 120) {
       card -= 4;
-      fit = fitFor(card);
+      fit = fitFor(card, gap);
     }
+    ROW_GAP = gap;
     CARD = card;
     lift = fit.lift;
   }
