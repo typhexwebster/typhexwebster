@@ -1939,6 +1939,19 @@
       .lightbox {
         flex-direction: column;
         justify-content: center;
+        /* Ein einziger Abstand für alles: X zu Bild, Bild zu Pfeilen,
+           Pfeile zu Beschriftung. So bleibt es garantiert gleich. */
+        --lb-gap: clamp(18px, 5.5vh, 44px);
+      }
+      /* Das X wird Teil des Blocks und wandert nach oben, statt fest in
+         der Fensterecke zu kleben — nur so lässt sich sein Abstand zum
+         Bild überhaupt festlegen. */
+      .lightbox-close {
+        position: static;
+        order: -1;
+        align-self: flex-end;
+        top: auto; right: auto;
+        margin: 0 16px var(--lb-gap) 0;
       }
       .lb-viewport {
         position: relative;
@@ -1957,7 +1970,7 @@
         /* Gleich viel Luft nach oben wie nach unten. Wird das Fenster
            niedrig, rücken die Pfeile näher heran — das Bild behält dafür
            seine Größe. */
-        padding: clamp(18px, 5.5vh, 44px) 24px;
+        padding: var(--lb-gap) 24px;
       }
       .lightbox-arrow {
         position: static;
@@ -1975,6 +1988,11 @@
            gesetzt. Ein Rand hier würde ihn wieder nach oben schieben. */
         padding: 0 24px;
         max-width: 100%;
+        /* Fester Platz für zwei Zeilen, auch wenn nur eine gebraucht wird.
+           Sonst wächst der Block bei einem langen Bildnamen — und weil er
+           mittig sitzt, würden Bild, Pfeile und X dabei nach oben wandern.
+           Unten ist ohnehin genug Raum für die zweite Zeile. */
+        min-height: 3.8em;
       }
     }
 
