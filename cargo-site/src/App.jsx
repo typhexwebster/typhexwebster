@@ -765,7 +765,6 @@ const LandingPage = ({ onEnter, scanlines = true, glow = true, tweaks = {} }) =>
 // ─── HUB PAGE ───────────────────────────────────────────────────────
 const HubPage = ({ onNavigate, tweaks }) => {
   const items = ['MUSIC', 'LIBRARY', 'CARGO', 'STORE', 'CONTACT'];
-  const STORE_URL = 'https://your-store.com';
   return (
     <div style={{
       display: 'flex', flexDirection: 'column',
@@ -786,10 +785,7 @@ const HubPage = ({ onNavigate, tweaks }) => {
           paddingBottom: tweaks.navBoxPadding * tweaks.navScale,
           borderRadius: 100
         }}
-        onClick={() => {
-          if (item === 'STORE') {window.open(STORE_URL, '_blank', 'noopener,noreferrer');} else
-          {onNavigate(item.toLowerCase());}
-        }}>
+        onClick={() => onNavigate(item.toLowerCase())}>
         
               {item}
             </button>
@@ -2399,23 +2395,11 @@ const CargoPage = ({ onBeatStart }) => {
 
 
 // ─── STORE PAGE ─────────────────────────────────────────────────────
+// Bewusst leer bis auf ein Wort. Platzhalter-Artikel wecken Erwartungen,
+// die es noch nicht gibt.
 const StorePage = () =>
 <div className="store-page page-enter">
-        <div className="store-soon">
-          <div className="cargo-section-label">CARGO STORE</div>
-          <div className="section-divider" style={{ margin: '12px auto 24px' }} />
-          <h1>STORE</h1>
-          <p>SOON</p>
-        </div>
-        <div className="store-grid">
-          {['TEE 001', 'TEE 002', 'HOODIE 001', 'CAP 001'].map((item) =>
-    <div key={item} className="store-item">
-              <span>[ clothing photo ]</span>
-              <span className="soon-tag">SOON</span>
-              <span style={{ color: '#333', fontSize: 10, letterSpacing: '0.2em' }}>{item}</span>
-            </div>
-    )}
-        </div>
+        <h1 className="store-soon-word"><span>SOON.</span></h1>
       </div>;
 
 
@@ -2489,6 +2473,20 @@ const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
   "landingBtn": "ENTER"
 } /*EDITMODE-END*/;
 
+// ─── BESCHRIFTUNG IM BROWSER-TAB ────────────────────────────────────
+// Der Name der Seite steht in index.html; hier wird je Bereich ein Präfix
+// davorgesetzt. Startseite und Übersicht behalten den reinen Namen.
+// Das Medienfenster (CARGO – MEDIA) ist kein eigener Bereich und ändert
+// deshalb nichts.
+const SITE_TITLE = 'TYPHEX WEBSTER — CARGO';
+const SECTION_TITLES = {
+  music: 'MUSIC',
+  library: 'LIBRARY',
+  cargo: 'CARGO',
+  store: 'STORE',
+  contact: 'CONTACT'
+};
+
 const App = () => {
   // Neu rendern, sobald sich der Download-Stand ändert — davon hängt
   // unter anderem ab, ob die Library-Seite gescrollt werden darf.
@@ -2539,6 +2537,12 @@ const App = () => {
   useEffect(() => () => {
     if (miniTimerRef.current) clearTimeout(miniTimerRef.current);
   }, []);
+
+  // Beschriftung im Browser-Tab dem Bereich anpassen.
+  useEffect(() => {
+    const section = SECTION_TITLES[screen];
+    document.title = section ? `${section} - ${SITE_TITLE}` : SITE_TITLE;
+  }, [screen]);
 
   // Tweaks
   const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);

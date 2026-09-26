@@ -1442,61 +1442,22 @@
       min-height: calc(100dvh - 72px);
     }
 
-    .store-soon {
+    /* Der Store zeigt bis auf Weiteres nur ein Wort. */
+    .store-soon-word {
       text-align: center;
+      margin: 0;
     }
-
-    .store-soon h1 {
+    .store-soon-word span {
+      display: inline-block;
       font-family: var(--mono);
-      font-size: clamp(24px, 5vw, 60px);
+      font-size: clamp(28px, 6vw, 64px);
       font-weight: 700;
       letter-spacing: 0.35em;
+      /* Der Sperrabstand hängt auch hinter dem letzten Zeichen und würde
+         das Wort sichtbar links von der Mitte absetzen. Hier wieder weg. */
+      margin-right: -0.35em;
       text-transform: uppercase;
       color: var(--white);
-      margin-bottom: 16px;
-    }
-
-    .store-soon p {
-      font-family: var(--mono);
-      font-size: 12px;
-      letter-spacing: 0.3em;
-      color: var(--red);
-      text-transform: uppercase;
-    }
-
-    .store-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-      gap: 2px;
-      margin-top: 60px;
-      width: 100%;
-      max-width: 800px;
-    }
-
-    .store-item {
-      aspect-ratio: 0.85;
-      background: #0d0d0d;
-      border: 1px solid #1a1a1a;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-    }
-
-    .store-item span {
-      font-family: var(--mono);
-      font-size: 9px;
-      letter-spacing: 0.15em;
-      color: #222;
-      text-align: center;
-      padding: 12px;
-    }
-
-    .store-item .soon-tag {
-      font-size: 10px;
-      color: var(--red);
-      letter-spacing: 0.25em;
     }
 
     /* CONTACT PAGE */
