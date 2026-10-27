@@ -1247,8 +1247,18 @@ const MusicGallery = ({ active, onActiveChange, onSelectAlbum, tweaks, playerOpe
 };
 
 // ─── ALBUM DETAIL ───────────────────────────────────────────────────
-const AlbumDetail = ({ album, onBack, onPlay, currentTrack, isPlaying, playerOpen = true, variant = 'music', onGoLibrary }) => {
+const AlbumDetail = ({ album, onBack, onPlay, currentTrack, isPlaying, playerOpen = true, variant = 'music', onGoLibrary, focusTrack = null }) => {
   const isLibrary = variant === 'library';
+  // Kommt man über einen Link auf ein bestimmtes Lied, scrollt die Liste
+  // beim Öffnen dorthin. Nur beim ersten Anzeigen.
+  useEffect(() => {
+    if (!focusTrack) return;
+    const id = setTimeout(() => {
+      const el = document.querySelector(`[data-track-id="${focusTrack}"]`);
+      if (el && el.scrollIntoView) el.scrollIntoView({ block: 'center' });
+    }, 400);
+    return () => clearTimeout(id);
+  }, []);
   // Gehört das gerade geladene Lied zu diesem Album? Danach richtet sich
   // der große Play-/Pause-Knopf über der Trackliste.
   const albumIsCurrent = !!currentTrack && currentTrack.albumId === album.id;
@@ -1580,7 +1590,7 @@ const AlbumDetail = ({ album, onBack, onPlay, currentTrack, isPlaying, playerOpe
           // Wird der Player geschlossen, ist es wieder weiss.
           const isThisLoaded = playerOpen && currentTrack?.id === track.id && currentTrack?.albumId === album.id;
           return (
-            <div key={track.id} className={`track-row ${isThisLoaded ? 'playing' : ''}`} onClick={() => onPlay(track, album)}>
+            <div key={track.id} data-track-id={track.id} className={`track-row ${isThisLoaded ? 'playing' : ''}${focusTrack === track.id && !isThisLoaded ? ' linked' : ''}`} onClick={() => onPlay(track, album)}>
                   <div className="track-num">
                     {isThisPlaying ? <EQ /> : track.id}
                   </div>
@@ -2488,6 +2498,42 @@ const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
 // Das Medienfenster (CARGO – MEDIA) ist kein eigener Bereich und ändert
 // deshalb nichts.
 const SITE_TITLE = 'TYPHEX WEBSTER — CARGO';
+// ─── ADRESSEN (Deep Links) ──────────────────────────────────────────
+// /music, /library, /cargo, /store, /contact, dazu /music/<album> und
+// /music/<album>/<tracknummer> (ebenso unter /library). Alles klein.
+// Startseite und Menü (Hub) bleiben auf "/".
+const ROUTE_SCREENS = ['music', 'library', 'cargo', 'store', 'contact'];
+
+const parsePath = (pathname) => {
+  const seg = (pathname || '/').toLowerCase().split('/').filter(Boolean).map((x) => {
+    try { return decodeURIComponent(x); } catch (e) { return x; }
+  });
+  const screen = ROUTE_SCREENS.includes(seg[0]) ? seg[0] : null;
+  if (!screen) return { screen: null, album: null, track: null };
+  let album = null;
+  let track = null;
+  if ((screen === 'music' || screen === 'library') && seg[1]) {
+    album = ALBUMS.find((a) => String(a.id).toLowerCase() === seg[1]) || null;
+    // Library: nur Alben, von denen der Besucher etwas geladen hat.
+    if (album && screen === 'library' && !downloads.albumHasDownloads(album.id)) album = null;
+    if (album && seg[2]) {
+      const t = album.tracks.find((x) => x.id === parseInt(seg[2], 10));
+      if (t && (screen === 'music' || downloads.isDownloaded(album.id, t.id))) track = t.id;
+    }
+  }
+  return { screen, album, track };
+};
+
+const buildPath = (screen, album, track) => {
+  if (!ROUTE_SCREENS.includes(screen)) return '/';
+  let p = '/' + screen;
+  if (album && (screen === 'music' || screen === 'library')) {
+    p += '/' + encodeURIComponent(String(album.id).toLowerCase());
+    if (track) p += '/' + track;
+  }
+  return p;
+};
+
 const SECTION_TITLES = {
   music: 'MUSIC',
   library: 'LIBRARY',
@@ -2500,12 +2546,27 @@ const App = () => {
   // Neu rendern, sobald sich der Download-Stand ändert — davon hängt
   // unter anderem ab, ob die Library-Seite gescrollt werden darf.
   useDownloads();
-  const [screen, setScreen] = useState('landing');
+  // Adresse beim Start auswerten: ein Link wie /music/psy-atlas öffnet
+  // direkt das Album und überspringt das ENTER-Gate.
+  const initialRouteRef = useRef(null);
+  if (initialRouteRef.current === null) initialRouteRef.current = parsePath(window.location.pathname);
+  const route0 = initialRouteRef.current;
+  const [screen, setScreen] = useState(route0.screen || 'landing');
   const [prevScreen, setPrevScreen] = useState('landing');
   const [navOpen, setNavOpen] = useState(false);
   const [bagOpen, setBagOpen] = useState(false);
-  const [selectedAlbum, setSelectedAlbum] = useState(null);
-  const [musicActive, setMusicActive] = useState(0);
+  const [selectedAlbum, setSelectedAlbum] = useState(route0.album);
+  const [musicActive, setMusicActive] = useState(
+    route0.album ? Math.max(0, ALBUMS.findIndex((a) => a.id === route0.album.id)) : 0
+  );
+  // Das zuletzt gewählte (oder per Link angegebene) Lied eines Albums —
+  // steht als Nummer in der Adresse. Gilt nur für genau dieses Album.
+  const [linked, setLinked] = useState(
+    route0.track && route0.album ? { screen: route0.screen, albumId: route0.album.id, track: route0.track } : null
+  );
+  const linkedTrack = linked && selectedAlbum && linked.screen === screen && linked.albumId === selectedAlbum.id
+    ? linked.track : null;
+  useEffect(() => { if (!selectedAlbum) setLinked(null); }, [selectedAlbum]);
   const [currentTrack, setCurrentTrack] = useState(null);
   const [currentAlbum, setCurrentAlbum] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -2590,8 +2651,9 @@ const App = () => {
     document.documentElement.style.fontSize = `${tweaks.fontScale * 100}%`;
   }, [tweaks.accentColor, tweaks.bgColor, tweaks.fontScale]);
 
-  // Persist screen
+  // Persist screen (eine Adresse mit Bereich hat Vorrang vor dem gemerkten)
   useEffect(() => {
+    if (route0.screen) return;
     try {
       const saved = localStorage.getItem('cargo_screen');
       const valid = ['hub', 'music', 'library', 'cargo', 'store', 'contact'];
@@ -2603,6 +2665,39 @@ const App = () => {
   useEffect(() => {
     if (screen !== 'landing') localStorage.setItem('cargo_screen', screen);
   }, [screen]);
+
+  // Adresszeile und Zustand abgleichen. Jeder Wechsel von Bereich oder
+  // Album erzeugt einen Verlaufseintrag (Zurück funktioniert), die Wahl
+  // eines Liedes im selben Album ersetzt nur den aktuellen.
+  const lastPathRef = useRef(null);
+  useEffect(() => {
+    const path = buildPath(screen, selectedAlbum, linkedTrack);
+    const cur = window.location.pathname.replace(/\/+$/, '') || '/';
+    const last = lastPathRef.current;
+    lastPathRef.current = path;
+    if (cur === path) return;
+    const base = (x) => x.split('/').slice(0, 3).join('/');
+    if (last === null || (last.split('/').length > 2 && base(last) === base(path))) {
+      window.history.replaceState(null, '', path);
+    } else {
+      window.history.pushState(null, '', path);
+    }
+  }, [screen, selectedAlbum, linkedTrack]);
+
+  useEffect(() => {
+    const onPop = () => {
+      const r = parsePath(window.location.pathname);
+      setScreen((cur) => r.screen || (cur === 'landing' ? 'landing' : 'hub'));
+      setSelectedAlbum(r.album);
+      setLinked(r.track && r.album ? { screen: r.screen, albumId: r.album.id, track: r.track } : null);
+      if (r.album) {
+        const i = ALBUMS.findIndex((a) => a.id === r.album.id);
+        if (i >= 0) setMusicActive(i);
+      }
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
 
   // Progress is animated inside NowPlayingBar via requestAnimationFrame (smooth,
   // frame-rate independent, no per-frame React re-renders). App's `progress` is
@@ -2683,6 +2778,12 @@ const App = () => {
     setPlayerPhase('closing');
     if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
     closeTimerRef.current = setTimeout(() => setPlayerPhase('closed'), 1050);
+  };
+
+  // Antippen eines Liedes in der Liste: abspielen und in die Adresse schreiben.
+  const handleRowPlay = (track, album) => {
+    setLinked({ screen, albumId: album.id, track: track.id });
+    handlePlay(track, album);
   };
 
   const handlePlay = (track, album) => {
@@ -2870,7 +2971,8 @@ const App = () => {
         <AlbumDetail
           album={selectedAlbum}
           onBack={() => setSelectedAlbum(null)}
-          onPlay={handlePlay}
+          onPlay={handleRowPlay}
+          focusTrack={linkedTrack}
           currentTrack={currentTrack}
           isPlaying={isPlaying}
           playerOpen={playerPhase === 'open'}
@@ -2892,7 +2994,8 @@ const App = () => {
           album={selectedAlbum}
           variant="library"
           onBack={() => setSelectedAlbum(null)}
-          onPlay={handlePlay}
+          onPlay={handleRowPlay}
+          focusTrack={linkedTrack}
           currentTrack={currentTrack}
           isPlaying={isPlaying}
           playerOpen={playerPhase === 'open'} />

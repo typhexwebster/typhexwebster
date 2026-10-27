@@ -1029,6 +1029,9 @@
 
     .track-row:hover { background: #0a0a0a; }
     .track-row.playing .track-title { color: var(--red); }
+    /* Lied, auf das ein Link zeigt (noch nicht abgespielt) */
+    .track-row.linked { background: #0a0a0a; box-shadow: inset 2px 0 0 var(--red); }
+    .track-row.linked .track-num { color: var(--red); }
 
     .track-num {
       font-family: var(--mono);

@@ -255,7 +255,13 @@ function AlbumEditor({ pw, album, tracks, analysedIds, libraryResets, onLibraryR
 
   const set = (k, v) => setA((p) => ({ ...p, [k]: v }));
 
-  const slugify = (s) => (s || '').toLowerCase().normalize('NFKD').replace(/[^\w]+/g, '-').replace(/^-+|-+$/g, '');
+  // URL-Name eines Albums: klein, ü -> ue, Satzzeichen entfallen,
+  // Leerzeichen -> Bindestrich. "SOFTWHERE!?" -> "softwhere".
+  const slugify = (s) => (s || '').toLowerCase()
+    .replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss')
+    .normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s_-]/g, '')
+    .replace(/[\s_]+/g, '-').replace(/-{2,}/g, '-').replace(/^-+|-+$/g, '');
 
   const coverUpload = async (file) => {
     if (!file) return;
@@ -270,7 +276,7 @@ function AlbumEditor({ pw, album, tracks, analysedIds, libraryResets, onLibraryR
   const save = async () => {
     try {
       let id = a.id;
-      if (isNew) { id = a.id || slugify(a.title); if (!id) return toast('Title / ID is missing'); }
+      if (isNew) { id = slugify(a.id) || slugify(a.title); if (!id) return toast('Title / ID is missing'); }
       const row = {
         id, title: a.title, artist: a.artist, label: a.label || 'CARGO', year: a.year,
         availability: a.availability, apple_url: a.apple_url || null, spotify_url: a.spotify_url || null,
