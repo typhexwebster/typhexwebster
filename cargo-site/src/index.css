@@ -2076,6 +2076,10 @@
     .np-inner {
       width: 100%;
       margin: 0 auto;
+      /* Hier wird gezogen (Fortschritt waagerecht, Einklappen senkrecht),
+         deshalb übernimmt der Browser keine Bewegung. Der leere Bereich
+         über dem Block bleibt frei, dort scrollt die Seite weiter. */
+      touch-action: none;
     }
     @media (min-width: 780px) {
       .np-inner { max-width: 600px; }
@@ -2163,6 +2167,12 @@
       min-width: 0;
       text-align: center;
       padding: 0 6px;
+    }
+    /* Titel und Interpret führen zum laufenden Album. */
+    .np-meta-link { cursor: pointer; }
+    .np-meta-link:focus-visible {
+      outline: 1px solid var(--red);
+      outline-offset: 4px;
     }
     .np-title {
       font-family: var(--mono);

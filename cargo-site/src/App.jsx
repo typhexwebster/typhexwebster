@@ -862,7 +862,18 @@ const RUN_EASE_OUT = 'cubic-bezier(0.333, 0.667, 0.667, 1)';
 const RUN_FADE = 16;    // Breite der weichen Kante, in px
 const RUN_FADE_OUT_MS = 450;
 
-const OneLine = ({ text, className = '', style, animate = true, measureRef = null }) => {
+const OneLine = ({ text, className = '', style, animate = true, measureRef = null, holdMs = 4000, onBusyChange = null }) => {
+  // Meldung nach draußen, solange eine Runde läuft. Im Player hängt daran,
+  // ob er einklappen darf. Der Verweis vermeidet, dass ein neuer Rückruf
+  // das Laufwerk unten neu startet.
+  const onBusyRef = useRef(onBusyChange);
+  onBusyRef.current = onBusyChange;
+  const busyRef = useRef(false);
+  const setBusy = useCallback((v) => {
+    if (busyRef.current === v) return;
+    busyRef.current = v;
+    if (onBusyRef.current) onBusyRef.current(v);
+  }, []);
   const boxRef = useRef(null);
   const innerRef = useRef(null);
   const [size, setSize] = useState({ textW: 0, boxW: 0 });
@@ -925,8 +936,9 @@ const OneLine = ({ text, className = '', style, animate = true, measureRef = nul
     setFadeMs(RUN_FADE_OUT_MS);
     setFadeEase('ease');
     setFadeLeft(false);
+    setBusy(false);
     if (!running) return;
-    const HOLD = 4000;                 // Standzeit am Anfang
+    const HOLD = holdMs;               // Standzeit am Anfang und zwischen den Runden
     const dist = size.textW + gap;     // Weg einer vollen Runde
     // Eine Runde besteht aus Anlauf, Dauerfahrt und Auslauf. Anlauf und
     // Auslauf sind gleich lang und spiegeln sich.
@@ -948,6 +960,7 @@ const OneLine = ({ text, className = '', style, animate = true, measureRef = nul
     const later = (fn, ms) => timers.push(setTimeout(fn, ms));
 
     const cycle = () => {
+      setBusy(true);
       setFadeMs(fadeInMs);
       setFadeEase(RUN_EASE_IN);
       setFadeLeft(true);
@@ -980,12 +993,13 @@ const OneLine = ({ text, className = '', style, animate = true, measureRef = nul
         setMoveMs(0);
         setMoveEase('linear');
         setShift(0);
+        setBusy(false);
         later(cycle, HOLD);
       }, rampMs + cruiseMs + rampMs);
     };
     later(cycle, HOLD);
-    return () => timers.forEach(clearTimeout);
-  }, [running, size.textW, gap, text]);
+    return () => { timers.forEach(clearTimeout); setBusy(false); };
+  }, [running, size.textW, gap, text, holdMs, setBusy]);
 
   // Fade-Breiten: in der Pause nur rechts, denn dort wartet der Text.
   // Sobald er fährt, beide Seiten — er taucht rechts auf und geht links weg.
@@ -1927,7 +1941,7 @@ const timecode = (sec) => {
   return `00:${pad(m)}:${pad(s)}:${pad(f)}`;
 };
 
-const NowPlayingBar = ({ track, album, isPlaying, phase, minimized, tweaks, onToggle, onPrev, onNext, onClose, onExpand, progress, currentTime, duration, onSeekTo, onScrubStart, onScrubEnd, canPrev = true }) => {
+const NowPlayingBar = ({ track, album, isPlaying, phase, minimized, tweaks, onToggle, onPrev, onNext, onClose, onExpand, progress, currentTime, duration, onSeekTo, onScrubStart, onScrubEnd, onOpenAlbum, onCollapse, canPrev = true }) => {
   // Ziehen am Fortschrittsbalken. Während des Ziehens folgt die Anzeige
   // sofort dem Finger bzw. der Maus, die Musik springt aber erst beim
   // Loslassen — sonst stottert es bei jeder Bewegung.
@@ -1935,6 +1949,75 @@ const NowPlayingBar = ({ track, album, isPlaying, phase, minimized, tweaks, onTo
   // Regeln von React.
   const barRef = useRef(null);
   const [dragFrac, setDragFrac] = useState(null);
+
+  // ── Einklappen aufhalten, solange Titel oder Interpret ihre erste Runde
+  //    fahren. Spätere Runden halten den Player nicht mehr auf, sonst
+  //    klappte er nie wieder ein.
+  const holdLinesRef = useRef({ title: false, artist: false });
+  const firstDoneRef = useRef({});
+  const [marqueeHold, setMarqueeHold] = useState(false);
+  useEffect(() => {
+    if (minimized) return;
+    holdLinesRef.current = { title: false, artist: false };
+    firstDoneRef.current = {};
+    setMarqueeHold(false);
+  }, [track, minimized]);
+  const reportBusy = (key) => (busy) => {
+    if (busy && firstDoneRef.current[key]) return;
+    holdLinesRef.current[key] = busy;
+    if (!busy) firstDoneRef.current[key] = true;
+    setMarqueeHold(holdLinesRef.current.title || holdLinesRef.current.artist);
+  };
+
+  // ── Zug nach unten klappt den Player ein ──
+  const PAN_START = 8;    // ab hier gilt die Bewegung als Ziehen
+  const PAN_CLOSE = 56;   // so weit gezogen klappt er ein
+  const panRef = useRef(null);
+  const draggedRef = useRef(false);
+  const [panY, setPanY] = useState(0);
+
+  const heldRef = useRef(false);
+  useEffect(() => {
+    if (marqueeHold === heldRef.current) return;
+    heldRef.current = marqueeHold;
+    if (marqueeHold) { if (onScrubStart) onScrubStart(); }
+    else if (!minimized && dragFrac === null && !panRef.current) {
+      if (onScrubEnd) onScrubEnd();
+    }
+  }, [marqueeHold, minimized]);
+
+  const panDown = (e) => {
+    draggedRef.current = false;
+    if (minimized || phase !== 'open') return;
+    // Knöpfe und der Fortschrittsbalken behalten ihre eigene Bedienung.
+    if (e.target.closest && e.target.closest('button, .np-progress')) return;
+    panRef.current = { x: e.clientX, y: e.clientY, dy: 0, on: false, id: e.pointerId };
+  };
+  const panMove = (e) => {
+    const d = panRef.current;
+    if (!d || d.id !== e.pointerId) return;
+    const dy = e.clientY - d.y;
+    const dx = e.clientX - d.x;
+    if (!d.on) {
+      // Erst ab einem deutlichen Weg nach unten, und nur wenn die
+      // Bewegung eher senkrecht als waagerecht ist.
+      if (dy <= PAN_START || Math.abs(dy) <= Math.abs(dx)) return;
+      d.on = true;
+      draggedRef.current = true;
+      if (onScrubStart) onScrubStart();
+      try { e.currentTarget.setPointerCapture(e.pointerId); } catch (err) {}
+    }
+    d.dy = Math.max(0, dy);
+    setPanY(d.dy);
+  };
+  const panEnd = () => {
+    const d = panRef.current;
+    panRef.current = null;
+    setPanY(0);
+    if (!d || !d.on) return;
+    if (d.dy > PAN_CLOSE) { if (onCollapse) onCollapse(); }
+    else if (onScrubEnd) onScrubEnd();
+  };
 
   const fracFromEvent = (clientX) => {
     const el = barRef.current;
@@ -1983,8 +2066,20 @@ const NowPlayingBar = ({ track, album, isPlaying, phase, minimized, tweaks, onTo
         title={`${track?.title} — ${track?.artist}`} style={{ height: "60px", borderWidth: "2px", width: "60px" }}>
           <EQMini playing={isPlaying} />
         </div>
-        <div className={`np-player ${phase === 'closing' ? 'np-closing' : minimized ? 'np-min' : 'np-open'}`} aria-hidden={minimized}>
-          <div className="np-inner">
+        <div
+        className={`np-player ${phase === 'closing' ? 'np-closing' : minimized ? 'np-min' : 'np-open'}`}
+        aria-hidden={minimized}
+        style={panY ? {
+          transform: `translateY(${panY}px)`,
+          opacity: Math.max(0.3, 1 - panY / 300),
+          transition: 'none'
+        } : undefined}>
+          <div
+          className="np-inner"
+          onPointerDown={panDown}
+          onPointerMove={panMove}
+          onPointerUp={panEnd}
+          onPointerCancel={panEnd}>
             <div className="np-row">
               <div className="np-controls">
                 <button className="np-ctrl" onClick={onPrev} aria-label="Previous"
@@ -1994,11 +2089,26 @@ const NowPlayingBar = ({ track, album, isPlaying, phase, minimized, tweaks, onTo
                 </button>
                 <button className="np-ctrl" onClick={onNext} aria-label="Next"><NextDouble /></button>
               </div>
-              <div className="np-meta">
+              {/* Ein Griff auf Titel oder Interpret führt zum Album, das
+                  gerade läuft. */}
+              <div
+              className={`np-meta${onOpenAlbum ? ' np-meta-link' : ''}`}
+              role={onOpenAlbum ? 'button' : undefined}
+              tabIndex={onOpenAlbum ? 0 : undefined}
+              onClick={(e) => {
+                // Nach einem Zug nach unten ist der Griff keine Auswahl.
+                if (draggedRef.current) { draggedRef.current = false; return; }
+                if (onOpenAlbum) onOpenAlbum(e);
+              }}
+              onKeyDown={onOpenAlbum ? (e) => {
+                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpenAlbum(); }
+              } : undefined}>
                 {/* Titel und Interpret wandern beide, wenn der Platz nicht
-                    reicht — auf schmalen Schirmen ist das die Regel. */}
-                <OneLine className="np-title" text={track?.title || ''} animate={!minimized} />
-                <OneLine className="np-artist" text={track?.artist || ''} animate={!minimized} />
+                    reicht — auf schmalen Schirmen ist das die Regel. Hier
+                    läuft es fast sofort los: der Player klappt nach vier
+                    Sekunden ein, eine lange Standzeit käme zu spät. */}
+                <OneLine className="np-title" text={track?.title || ''} animate={!minimized} holdMs={700} onBusyChange={reportBusy('title')} />
+                <OneLine className="np-artist" text={track?.artist || ''} animate={!minimized} holdMs={700} onBusyChange={reportBusy('artist')} />
               </div>
               <button
               className="np-close"
@@ -2829,6 +2939,26 @@ const App = () => {
     if (page === 'landing') localStorage.removeItem('cargo_screen');
   };
 
+  // Griff auf Titel/Interpret im Player: das laufende Album öffnen. In der
+  // Library bleibt man dort, sofern das Album dort überhaupt steht —
+  // sonst führt der Weg in den MUSIC-Bereich mit der vollen Trackliste.
+  const handleOpenPlayingAlbum = () => {
+    if (!currentAlbum) return;
+    const stay = screen === 'library' && downloads.albumHasDownloads(currentAlbum.id);
+    const target = stay ? 'library' : 'music';
+    if (target !== screen) setPrevScreen(screen);
+    setScreen(target);
+    setSelectedAlbum(currentAlbum);
+    const i = ALBUMS.findIndex((a) => a.id === currentAlbum.id);
+    if (i >= 0) setMusicActive(i);
+  };
+
+  // Zug nach unten: sofort einklappen, ohne auf die Zeit zu warten.
+  const handleCollapsePlayer = useCallback(() => {
+    if (miniTimerRef.current) clearTimeout(miniTimerRef.current);
+    setMinimized(true);
+  }, []);
+
   const handleClosePlayer = () => {
     setIsPlaying(false);
     if (miniTimerRef.current) clearTimeout(miniTimerRef.current);
@@ -3090,7 +3220,9 @@ const App = () => {
         duration={audioDur}
         onSeekTo={handleSeekTo}
         onScrubStart={holdMinimize}
-        onScrubEnd={restartMinimizeTimer} />
+        onScrubEnd={restartMinimizeTimer}
+        onOpenAlbum={handleOpenPlayingAlbum}
+        onCollapse={handleCollapsePlayer} />
 
           {/* Ganz normales <audio>: kein crossOrigin, kein Web Audio.
               Genau so darf iOS im Hintergrund weiterspielen. */}
