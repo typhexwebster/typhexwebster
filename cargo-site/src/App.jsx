@@ -1995,8 +1995,10 @@ const NowPlayingBar = ({ track, album, isPlaying, phase, minimized, tweaks, onTo
                 <button className="np-ctrl" onClick={onNext} aria-label="Next"><NextDouble /></button>
               </div>
               <div className="np-meta">
+                {/* Titel und Interpret wandern beide, wenn der Platz nicht
+                    reicht — auf schmalen Schirmen ist das die Regel. */}
                 <OneLine className="np-title" text={track?.title || ''} animate={!minimized} />
-                <div className="np-artist">{track?.artist}</div>
+                <OneLine className="np-artist" text={track?.artist || ''} animate={!minimized} />
               </div>
               <button
               className="np-close"
