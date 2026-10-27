@@ -862,7 +862,7 @@ const RUN_EASE_OUT = 'cubic-bezier(0.333, 0.667, 0.667, 1)';
 const RUN_FADE = 16;    // Breite der weichen Kante, in px
 const RUN_FADE_OUT_MS = 450;
 
-const OneLine = ({ text, className = '', style, animate = true, measureRef = null, holdMs = 4000, onBusyChange = null }) => {
+const OneLine = ({ text, className = '', style, animate = true, measureRef = null, holdMs = 4000, onBusyChange = null, once = false }) => {
   // Meldung nach draußen, solange eine Runde läuft. Im Player hängt daran,
   // ob er einklappen darf. Der Verweis vermeidet, dass ein neuer Rückruf
   // das Laufwerk unten neu startet.
@@ -876,10 +876,8 @@ const OneLine = ({ text, className = '', style, animate = true, measureRef = nul
   }, []);
   const boxRef = useRef(null);
   const innerRef = useRef(null);
+  const runnerRef = useRef(null);   // das Element, das verschoben wird
   const [size, setSize] = useState({ textW: 0, boxW: 0 });
-  const [shift, setShift] = useState(0); // aktuelle Verschiebung
-  const [moveMs, setMoveMs] = useState(0);
-  const [moveEase, setMoveEase] = useState('linear');
   const [fadeMs, setFadeMs] = useState(RUN_FADE_OUT_MS);
   const [fadeEase, setFadeEase] = useState('ease');
 
@@ -930,76 +928,83 @@ const OneLine = ({ text, className = '', style, animate = true, measureRef = nul
   const [fadeLeft, setFadeLeft] = useState(false);
 
   useEffect(() => {
-    setShift(0);
-    setMoveMs(0);
-    setMoveEase('linear');
     setFadeMs(RUN_FADE_OUT_MS);
     setFadeEase('ease');
     setFadeLeft(false);
     setBusy(false);
-    if (!running) return;
+    const el = runnerRef.current;
+    if (!running || !el || typeof el.animate !== 'function') return;
+
     const HOLD = holdMs;               // Standzeit am Anfang und zwischen den Runden
     const dist = size.textW + gap;     // Weg einer vollen Runde
     // Eine Runde besteht aus Anlauf, Dauerfahrt und Auslauf. Anlauf und
     // Auslauf sind gleich lang und spiegeln sich.
-    const ramp = Math.min(RUN_RAMP, Math.floor(dist / 2));
-    const rampMs = Math.max(1, Math.round(ramp * 2 / RUN_SPEED * 1000));
-    const cruiseMs = Math.max(0, Math.round((dist - 2 * ramp) / RUN_SPEED * 1000));
+    const ramp = Math.min(RUN_RAMP, dist / 2);
+    const rampMs = ramp * 2 / RUN_SPEED * 1000;
+    const cruiseMs = Math.max(1, (dist - 2 * ramp) / RUN_SPEED * 1000);
+    const totalMs = Math.max(1, Math.round(rampMs * 2 + cruiseMs));
     // Sobald der letzte Buchstabe links draussen ist, folgt nur noch die
     // Lücke. Ab hier wird der linke Verlauf abgeschaltet, damit der Titel
     // bei seiner Ankunft nicht angefasst wird.
-    const fadeOffMs = rampMs + Math.max(0, Math.round((size.textW - ramp) / RUN_SPEED * 1000));
+    const fadeOffMs = Math.min(totalMs, Math.round(rampMs + Math.max(0, (size.textW - ramp) / RUN_SPEED * 1000)));
     // Der linke Verlauf wächst genau so weit mit, wie der Text schon nach
     // links hinausgefahren ist: bei 0 px Weg ist er 0 breit, bei RUN_FADE px
     // Weg voll. Sonst würde er die ersten Buchstaben abdunkeln, während sie
     // im Anlauf noch fast stillstehen. Mit derselben Kurve wie der Anlauf
-    // und dieser Dauer deckt sich seine Breite auf den Pixel mit dem Weg.
-    const fadeInMs = Math.max(1, Math.round(rampMs * Math.sqrt(Math.min(RUN_FADE, ramp) / ramp)));
+    // und dieser Dauer deckt sich seine Breite mit dem Weg. Ist der Anlauf
+    // kürzer als die Kante, wird der Rest gleichmässig dazugerechnet; der
+    // Verlauf bleibt dann etwas hinter dem Weg, nie davor.
+    const fadeInMs = ramp >= RUN_FADE ?
+    Math.max(1, Math.round(rampMs * Math.sqrt(RUN_FADE / ramp))) :
+    Math.max(1, Math.round(rampMs + (RUN_FADE - ramp) / RUN_SPEED * 1000));
 
+    // Der ganze Lauf ist EINE Animation: Anlauf, Dauerfahrt und Auslauf
+    // stecken als Abschnitte darin, jeder mit seiner eigenen Kurve. Früher
+    // waren es drei aneinandergereihte CSS-Übergänge, die von Zeitgebern
+    // gestartet wurden — deren Uhr wich vom wirklichen Weg ab, und beim
+    // Bremsen musste die Kurve den Rückstand aufholen. Das ruckelte.
+    // Eine Animation hat nur eine Uhr, also kann nichts auseinanderlaufen.
+    const frames = [
+    { offset: 0, transform: 'translateX(0px)', easing: RUN_EASE_IN },
+    { offset: rampMs / totalMs, transform: `translateX(${-ramp}px)`, easing: 'linear' },
+    { offset: (rampMs + cruiseMs) / totalMs, transform: `translateX(${-(dist - ramp)}px)`, easing: RUN_EASE_OUT },
+    { offset: 1, transform: `translateX(${-dist}px)` }];
+
+    let anim = null;
+    let stopped = false;
     const timers = [];
     const later = (fn, ms) => timers.push(setTimeout(fn, ms));
 
-    const cycle = () => {
+    const startRound = () => {
+      if (stopped) return;
       setBusy(true);
       setFadeMs(fadeInMs);
       setFadeEase(RUN_EASE_IN);
       setFadeLeft(true);
-      // 1. Anlauf: aus dem Stand auf Dauergeschwindigkeit.
-      setMoveEase(RUN_EASE_IN);
-      setMoveMs(rampMs);
-      setShift(-ramp);
-      // 2. Dauerfahrt: gleichmässig.
-      later(() => {
-        setMoveEase('linear');
-        setMoveMs(cruiseMs);
-        setShift(-(dist - ramp));
-      }, rampMs);
       later(() => {
         setFadeMs(RUN_FADE_OUT_MS);
         setFadeEase('ease');
         setFadeLeft(false);
       }, fadeOffMs);
-      // 3. Auslauf: weich in die Ruhelage.
-      later(() => {
-        setMoveEase(RUN_EASE_OUT);
-        setMoveMs(rampMs);
-        setShift(-dist);
-      }, rampMs + cruiseMs);
-      later(() => {
-        // Ohne Übergang zurück auf Null. Der zweite Abzug steht jetzt exakt
-        // dort, wo der erste stand — das Bild ist identisch, der Sprung
-        // unsichtbar. Der Text steht in diesem Augenblick still, deshalb
-        // fällt auch der Wechsel der Kurve nicht auf.
-        setMoveMs(0);
-        setMoveEase('linear');
-        setShift(0);
+      anim = el.animate(frames, { duration: totalMs, fill: 'forwards' });
+      anim.onfinish = () => {
+        if (stopped) return;
+        // Der zweite Abzug steht jetzt genau dort, wo der erste stand —
+        // das Bild ist identisch. Die Animation zu verwerfen setzt den
+        // Text auf Null zurück, ohne dass man etwas sieht.
+        if (anim) { anim.cancel(); anim = null; }
         setBusy(false);
-        later(cycle, HOLD);
-      }, rampMs + cruiseMs + rampMs);
+        if (!once) later(startRound, HOLD);
+      };
     };
-    later(cycle, HOLD);
-    return () => { timers.forEach(clearTimeout); setBusy(false); };
-  }, [running, size.textW, gap, text, holdMs, setBusy]);
+    later(startRound, HOLD);
+    return () => {
+      stopped = true;
+      timers.forEach(clearTimeout);
+      if (anim) { anim.onfinish = null; anim.cancel(); anim = null; }
+      setBusy(false);
+    };
+  }, [running, size.textW, gap, text, holdMs, once, setBusy]);
 
   // Fade-Breiten: in der Pause nur rechts, denn dort wartet der Text.
   // Sobald er fährt, beide Seiten — er taucht rechts auf und geht links weg.
@@ -1025,15 +1030,9 @@ const OneLine = ({ text, className = '', style, animate = true, measureRef = nul
         ...(running ? { transition: `--fade-l ${fadeMs}ms ${fadeEase}, --fade-r ${RUN_FADE_OUT_MS}ms ease` } : null)
       }}
       title={text}>
-      <span
-        className="one-line-in"
-        style={{
-          transform: `translateX(${shift}px)`,
-          // Die Kurve wechselt je Abschnitt: Anlauf, Dauerfahrt, Auslauf.
-          // An den Übergängen ist die Geschwindigkeit dieselbe, deshalb
-          // bleibt der Lauf ruckfrei.
-          transition: moveMs ? `transform ${moveMs}ms ${moveEase}` : 'none'
-        }}>
+      {/* Verschoben wird dieses Element — und zwar von der Animation im
+          Laufwerk oben, nicht über Stilangaben hier. */}
+      <span className="one-line-in" ref={runnerRef}>
         <span ref={innerRef} style={running ? { marginRight: gap } : undefined}>{text}</span>
         {running ? <span aria-hidden="true">{text}</span> : null}
       </span>
@@ -1950,9 +1949,9 @@ const NowPlayingBar = ({ track, album, isPlaying, phase, minimized, tweaks, onTo
   const barRef = useRef(null);
   const [dragFrac, setDragFrac] = useState(null);
 
-  // ── Einklappen aufhalten, solange Titel oder Interpret ihre erste Runde
-  //    fahren. Spätere Runden halten den Player nicht mehr auf, sonst
-  //    klappte er nie wieder ein.
+  // ── Einklappen aufhalten, solange Titel oder Interpret ihre Runde
+  //    fahren. Beide fahren je Öffnen genau eine Runde (once), danach
+  //    klappt der Player kurz nach dem Stillstand ein.
   const holdLinesRef = useRef({ title: false, artist: false });
   const firstDoneRef = useRef({});
   const [marqueeHold, setMarqueeHold] = useState(false);
@@ -1976,14 +1975,21 @@ const NowPlayingBar = ({ track, album, isPlaying, phase, minimized, tweaks, onTo
   const draggedRef = useRef(false);
   const [panY, setPanY] = useState(0);
 
+  // Steht der letzte Lauf still, bleibt nur ein kurzer Moment — dann
+  // klappt der Player ein. Greift gerade jemand zu (Balken oder Zug),
+  // bleibt er offen; das Loslassen setzt die gewohnte Zeit wieder in Gang.
+  const PAUSE_AFTER_RUN = 600;
   const heldRef = useRef(false);
   useEffect(() => {
     if (marqueeHold === heldRef.current) return;
     heldRef.current = marqueeHold;
-    if (marqueeHold) { if (onScrubStart) onScrubStart(); }
-    else if (!minimized && dragFrac === null && !panRef.current) {
-      if (onScrubEnd) onScrubEnd();
+    if (marqueeHold) {
+      if (onScrubStart) onScrubStart();
+      return;
     }
+    if (minimized || dragFrac !== null || panRef.current) return;
+    const id = setTimeout(() => { if (onCollapse) onCollapse(); }, PAUSE_AFTER_RUN);
+    return () => clearTimeout(id);
   }, [marqueeHold, minimized]);
 
   const panDown = (e) => {
@@ -2107,8 +2113,8 @@ const NowPlayingBar = ({ track, album, isPlaying, phase, minimized, tweaks, onTo
                     reicht — auf schmalen Schirmen ist das die Regel. Hier
                     läuft es fast sofort los: der Player klappt nach vier
                     Sekunden ein, eine lange Standzeit käme zu spät. */}
-                <OneLine className="np-title" text={track?.title || ''} animate={!minimized} holdMs={700} onBusyChange={reportBusy('title')} />
-                <OneLine className="np-artist" text={track?.artist || ''} animate={!minimized} holdMs={700} onBusyChange={reportBusy('artist')} />
+                <OneLine className="np-title" text={track?.title || ''} animate={!minimized} holdMs={700} once onBusyChange={reportBusy('title')} />
+                <OneLine className="np-artist" text={track?.artist || ''} animate={!minimized} holdMs={700} once onBusyChange={reportBusy('artist')} />
               </div>
               <button
               className="np-close"
