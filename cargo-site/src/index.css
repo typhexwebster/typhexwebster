@@ -445,8 +445,9 @@
     /* Nur wenn wirklich gewandert wird: links ausrichten (sonst würde ein
        zentrierter, zu breiter Text schon am Start halb aus dem Bild ragen).
        Am Anfang blendet nur die rechte Seite aus — dort geht der Text ja
-       weiter. Sobald er losfährt, kommt der linke Fade dazu; steht er am
-       Ende, verschwindet der rechte. Genau wie im Apple-Player. */
+       weiter. Sobald er losfährt, kommt der linke Fade dazu und bleibt,
+       bis der letzte Buchstabe links draussen ist; danach gleitet der
+       Titel ohne Verlauf an seinen Platz. */
     .one-line-run {
       text-align: left;
       -webkit-mask-image: linear-gradient(to right,

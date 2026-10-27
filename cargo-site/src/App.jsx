@@ -850,12 +850,23 @@ function inkOverhang(el) {
 //
 // Gemessen wird die tatsächliche Textbreite gegen die verfügbare Breite —
 // nicht geschätzt. Ändert sich das Fenster oder der Text, wird neu gemessen.
+// Lauftext: Dauergeschwindigkeit und Anlauf.
+// Der Anlauf folgt y = t² — die Kurve startet bei Geschwindigkeit 0 und
+// endet genau bei RUN_SPEED, deshalb gibt es beim Übergang in die
+// Dauerfahrt keinen Geschwindigkeitssprung. RUN_EASE_OUT ist ihr
+// Spiegelbild und bremst von RUN_SPEED wieder auf 0 ab.
+const RUN_SPEED = 45;   // px pro Sekunde im Dauerlauf
+const RUN_RAMP = 20;    // Weg für Anlauf bzw. Auslauf, in px
+const RUN_EASE_IN = 'cubic-bezier(0.333, 0, 0.667, 0.333)';
+const RUN_EASE_OUT = 'cubic-bezier(0.333, 0.667, 0.667, 1)';
+
 const OneLine = ({ text, className = '', style, animate = true, measureRef = null }) => {
   const boxRef = useRef(null);
   const innerRef = useRef(null);
   const [size, setSize] = useState({ textW: 0, boxW: 0 });
   const [shift, setShift] = useState(0); // aktuelle Verschiebung
   const [moveMs, setMoveMs] = useState(0);
+  const [moveEase, setMoveEase] = useState('linear');
 
   // ── messen ──
   useEffect(() => {
@@ -898,41 +909,70 @@ const OneLine = ({ text, className = '', style, animate = true, measureRef = nul
   // Breite des Feldes bemessen, damit sie überall stimmig wirkt.
   const gap = running ? Math.max(48, Math.round(size.boxW * 0.35)) : 0;
 
-  // Zwei Zustände: 'rest' steht vier Sekunden am Anfang, 'run' fährt eine
-  // volle Runde durch.
-  const [stage, setStage] = useState('rest');
+  // Steht der Text still, braucht die linke Seite keinen Verlauf. Er wird
+  // zugeschaltet, sobald es losgeht, und wieder abgeschaltet, sobald der
+  // letzte Buchstabe links aus dem Bild ist (siehe unten).
+  const [fadeLeft, setFadeLeft] = useState(false);
 
   useEffect(() => {
     setShift(0);
     setMoveMs(0);
-    setStage('rest');
+    setMoveEase('linear');
+    setFadeLeft(false);
     if (!running) return;
     const HOLD = 4000;                 // Standzeit am Anfang
     const dist = size.textW + gap;     // Weg einer vollen Runde
-    const travel = Math.max(700, Math.round(dist / 45 * 1000)); // ~45 px/s
-    let timer = null;
+    // Eine Runde besteht aus Anlauf, Dauerfahrt und Auslauf. Anlauf und
+    // Auslauf sind gleich lang und spiegeln sich.
+    const ramp = Math.min(RUN_RAMP, Math.floor(dist / 2));
+    const rampMs = Math.max(1, Math.round(ramp * 2 / RUN_SPEED * 1000));
+    const cruiseMs = Math.max(0, Math.round((dist - 2 * ramp) / RUN_SPEED * 1000));
+    // Sobald der letzte Buchstabe links draussen ist, folgt nur noch die
+    // Lücke. Ab hier wird der linke Verlauf abgeschaltet, damit der Titel
+    // bei seiner Ankunft nicht angefasst wird.
+    const fadeOffMs = rampMs + Math.max(0, Math.round((size.textW - ramp) / RUN_SPEED * 1000));
+
+    const timers = [];
+    const later = (fn, ms) => timers.push(setTimeout(fn, ms));
+
     const cycle = () => {
-      setStage('run');
-      setMoveMs(travel);
-      setShift(-dist);
-      timer = setTimeout(() => {
+      setFadeLeft(true);
+      // 1. Anlauf: aus dem Stand auf Dauergeschwindigkeit.
+      setMoveEase(RUN_EASE_IN);
+      setMoveMs(rampMs);
+      setShift(-ramp);
+      // 2. Dauerfahrt: gleichmässig.
+      later(() => {
+        setMoveEase('linear');
+        setMoveMs(cruiseMs);
+        setShift(-(dist - ramp));
+      }, rampMs);
+      later(() => setFadeLeft(false), fadeOffMs);
+      // 3. Auslauf: weich in die Ruhelage.
+      later(() => {
+        setMoveEase(RUN_EASE_OUT);
+        setMoveMs(rampMs);
+        setShift(-dist);
+      }, rampMs + cruiseMs);
+      later(() => {
         // Ohne Übergang zurück auf Null. Der zweite Abzug steht jetzt exakt
         // dort, wo der erste stand — das Bild ist identisch, der Sprung
-        // unsichtbar.
+        // unsichtbar. Der Text steht in diesem Augenblick still, deshalb
+        // fällt auch der Wechsel der Kurve nicht auf.
         setMoveMs(0);
+        setMoveEase('linear');
         setShift(0);
-        setStage('rest');
-        timer = setTimeout(cycle, HOLD);
-      }, travel);
+        later(cycle, HOLD);
+      }, rampMs + cruiseMs + rampMs);
     };
-    timer = setTimeout(cycle, HOLD);
-    return () => clearTimeout(timer);
+    later(cycle, HOLD);
+    return () => timers.forEach(clearTimeout);
   }, [running, size.textW, gap, text]);
 
   // Fade-Breiten: in der Pause nur rechts, denn dort wartet der Text.
   // Sobald er fährt, beide Seiten — er taucht rechts auf und geht links weg.
   const FADE = 16;
-  const fadeL = running && stage === 'run' ? FADE : 0;
+  const fadeL = running && fadeLeft ? FADE : 0;
   const fadeR = running ? FADE : 0;
 
   return (
@@ -950,9 +990,10 @@ const OneLine = ({ text, className = '', style, animate = true, measureRef = nul
         className="one-line-in"
         style={{
           transform: `translateX(${shift}px)`,
-          // Gleichmäßig, ohne Beschleunigen oder Abbremsen — sonst wäre an
-          // der Nahtstelle jeder Runde ein Ruck zu sehen.
-          transition: moveMs ? `transform ${moveMs}ms linear` : 'none'
+          // Die Kurve wechselt je Abschnitt: Anlauf, Dauerfahrt, Auslauf.
+          // An den Übergängen ist die Geschwindigkeit dieselbe, deshalb
+          // bleibt der Lauf ruckfrei.
+          transition: moveMs ? `transform ${moveMs}ms ${moveEase}` : 'none'
         }}>
         <span ref={innerRef} style={running ? { marginRight: gap } : undefined}>{text}</span>
         {running ? <span aria-hidden="true">{text}</span> : null}
