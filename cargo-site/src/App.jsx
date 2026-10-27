@@ -859,6 +859,8 @@ const RUN_SPEED = 45;   // px pro Sekunde im Dauerlauf
 const RUN_RAMP = 20;    // Weg für Anlauf bzw. Auslauf, in px
 const RUN_EASE_IN = 'cubic-bezier(0.333, 0, 0.667, 0.333)';
 const RUN_EASE_OUT = 'cubic-bezier(0.333, 0.667, 0.667, 1)';
+const RUN_FADE = 16;    // Breite der weichen Kante, in px
+const RUN_FADE_OUT_MS = 450;
 
 const OneLine = ({ text, className = '', style, animate = true, measureRef = null }) => {
   const boxRef = useRef(null);
@@ -867,6 +869,8 @@ const OneLine = ({ text, className = '', style, animate = true, measureRef = nul
   const [shift, setShift] = useState(0); // aktuelle Verschiebung
   const [moveMs, setMoveMs] = useState(0);
   const [moveEase, setMoveEase] = useState('linear');
+  const [fadeMs, setFadeMs] = useState(RUN_FADE_OUT_MS);
+  const [fadeEase, setFadeEase] = useState('ease');
 
   // ── messen ──
   useEffect(() => {
@@ -918,6 +922,8 @@ const OneLine = ({ text, className = '', style, animate = true, measureRef = nul
     setShift(0);
     setMoveMs(0);
     setMoveEase('linear');
+    setFadeMs(RUN_FADE_OUT_MS);
+    setFadeEase('ease');
     setFadeLeft(false);
     if (!running) return;
     const HOLD = 4000;                 // Standzeit am Anfang
@@ -931,11 +937,19 @@ const OneLine = ({ text, className = '', style, animate = true, measureRef = nul
     // Lücke. Ab hier wird der linke Verlauf abgeschaltet, damit der Titel
     // bei seiner Ankunft nicht angefasst wird.
     const fadeOffMs = rampMs + Math.max(0, Math.round((size.textW - ramp) / RUN_SPEED * 1000));
+    // Der linke Verlauf wächst genau so weit mit, wie der Text schon nach
+    // links hinausgefahren ist: bei 0 px Weg ist er 0 breit, bei RUN_FADE px
+    // Weg voll. Sonst würde er die ersten Buchstaben abdunkeln, während sie
+    // im Anlauf noch fast stillstehen. Mit derselben Kurve wie der Anlauf
+    // und dieser Dauer deckt sich seine Breite auf den Pixel mit dem Weg.
+    const fadeInMs = Math.max(1, Math.round(rampMs * Math.sqrt(Math.min(RUN_FADE, ramp) / ramp)));
 
     const timers = [];
     const later = (fn, ms) => timers.push(setTimeout(fn, ms));
 
     const cycle = () => {
+      setFadeMs(fadeInMs);
+      setFadeEase(RUN_EASE_IN);
       setFadeLeft(true);
       // 1. Anlauf: aus dem Stand auf Dauergeschwindigkeit.
       setMoveEase(RUN_EASE_IN);
@@ -947,7 +961,11 @@ const OneLine = ({ text, className = '', style, animate = true, measureRef = nul
         setMoveMs(cruiseMs);
         setShift(-(dist - ramp));
       }, rampMs);
-      later(() => setFadeLeft(false), fadeOffMs);
+      later(() => {
+        setFadeMs(RUN_FADE_OUT_MS);
+        setFadeEase('ease');
+        setFadeLeft(false);
+      }, fadeOffMs);
       // 3. Auslauf: weich in die Ruhelage.
       later(() => {
         setMoveEase(RUN_EASE_OUT);
@@ -971,9 +989,8 @@ const OneLine = ({ text, className = '', style, animate = true, measureRef = nul
 
   // Fade-Breiten: in der Pause nur rechts, denn dort wartet der Text.
   // Sobald er fährt, beide Seiten — er taucht rechts auf und geht links weg.
-  const FADE = 16;
-  const fadeL = running && fadeLeft ? FADE : 0;
-  const fadeR = running ? FADE : 0;
+  const fadeL = running && fadeLeft ? RUN_FADE : 0;
+  const fadeR = running ? RUN_FADE : 0;
 
   return (
     <div
@@ -984,7 +1001,15 @@ const OneLine = ({ text, className = '', style, animate = true, measureRef = nul
         if (measureRef && el) measureRef.current = el;
       }}
       className={`one-line ${running ? 'one-line-run' : ''} ${className}`.trim()}
-      style={{ ...style, '--fade-l': `${fadeL}px`, '--fade-r': `${fadeR}px` }}
+      style={{
+        ...style,
+        '--fade-l': `${fadeL}px`,
+        '--fade-r': `${fadeR}px`,
+        // Der linke Verlauf braucht je Richtung eine eigene Dauer und
+        // Kurve (siehe fadeInMs), deshalb steht der Übergang hier und
+        // nicht in der CSS-Klasse.
+        ...(running ? { transition: `--fade-l ${fadeMs}ms ${fadeEase}, --fade-r ${RUN_FADE_OUT_MS}ms ease` } : null)
+      }}
       title={text}>
       <span
         className="one-line-in"
