@@ -1247,18 +1247,8 @@ const MusicGallery = ({ active, onActiveChange, onSelectAlbum, tweaks, playerOpe
 };
 
 // ─── ALBUM DETAIL ───────────────────────────────────────────────────
-const AlbumDetail = ({ album, onBack, onPlay, currentTrack, isPlaying, playerOpen = true, variant = 'music', onGoLibrary, focusTrack = null }) => {
+const AlbumDetail = ({ album, onBack, onPlay, currentTrack, isPlaying, playerOpen = true, variant = 'music', onGoLibrary }) => {
   const isLibrary = variant === 'library';
-  // Kommt man über einen Link auf ein bestimmtes Lied, scrollt die Liste
-  // beim Öffnen dorthin. Nur beim ersten Anzeigen.
-  useEffect(() => {
-    if (!focusTrack) return;
-    const id = setTimeout(() => {
-      const el = document.querySelector(`[data-track-id="${focusTrack}"]`);
-      if (el && el.scrollIntoView) el.scrollIntoView({ block: 'center' });
-    }, 400);
-    return () => clearTimeout(id);
-  }, []);
   // Gehört das gerade geladene Lied zu diesem Album? Danach richtet sich
   // der große Play-/Pause-Knopf über der Trackliste.
   const albumIsCurrent = !!currentTrack && currentTrack.albumId === album.id;
@@ -1590,7 +1580,7 @@ const AlbumDetail = ({ album, onBack, onPlay, currentTrack, isPlaying, playerOpe
           // Wird der Player geschlossen, ist es wieder weiss.
           const isThisLoaded = playerOpen && currentTrack?.id === track.id && currentTrack?.albumId === album.id;
           return (
-            <div key={track.id} data-track-id={track.id} className={`track-row ${isThisLoaded ? 'playing' : ''}${focusTrack === track.id && !isThisLoaded ? ' linked' : ''}`} onClick={() => onPlay(track, album)}>
+            <div key={track.id} className={`track-row ${isThisLoaded ? 'playing' : ''}`} onClick={() => onPlay(track, album)}>
                   <div className="track-num">
                     {isThisPlaying ? <EQ /> : track.id}
                   </div>
@@ -2499,39 +2489,53 @@ const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
 // deshalb nichts.
 const SITE_TITLE = 'TYPHEX WEBSTER — CARGO';
 // ─── ADRESSEN (Deep Links) ──────────────────────────────────────────
-// /music, /library, /cargo, /store, /contact, dazu /music/<album> und
-// /music/<album>/<tracknummer> (ebenso unter /library). Alles klein.
+// /music/, /library/, /cargo, /store, /contact, dazu /music/<album> und
+// /library/<album>. Alles klein.
 // Startseite und Menü (Hub) bleiben auf "/".
 const ROUTE_SCREENS = ['music', 'library', 'cargo', 'store', 'contact'];
+
+// Adressname: klein, ü -> ue, Satzzeichen entfallen, Leerzeichen -> "-".
+// "PYRALITH - SINGLE" -> "pyralith-single"
+const slugText = (x) => String(x || '').toLowerCase()
+  .replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss')
+  .normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+  .replace(/[^a-z0-9\s_-]/g, '')
+  .replace(/[\s_]+/g, '-').replace(/-{2,}/g, '-').replace(/^-+|-+$/g, '');
+// Ein Titel, der nur aus "-" besteht, heisst auch in der Adresse "-".
+const slugOrDash = (x) => slugText(x) || (/^[\s-]*-[\s-]*$/.test(String(x || '')) ? '-' : '');
+
+// Adresse eines Albums: aus dem Titel. Bleibt davon nichts übrig (nur
+// Satzzeichen), dient die ID als Ersatz, sonst wäre das Album nicht
+// verlinkbar.
+const albumUrlName = (a) => slugOrDash(a.title) || slugText(a.id);
 
 const parsePath = (pathname) => {
   const seg = (pathname || '/').toLowerCase().split('/').filter(Boolean).map((x) => {
     try { return decodeURIComponent(x); } catch (e) { return x; }
   });
   const screen = ROUTE_SCREENS.includes(seg[0]) ? seg[0] : null;
-  if (!screen) return { screen: null, album: null, track: null };
+  if (!screen) return { screen: null, album: null };
   let album = null;
-  let track = null;
   if ((screen === 'music' || screen === 'library') && seg[1]) {
-    album = ALBUMS.find((a) => String(a.id).toLowerCase() === seg[1]) || null;
+    const want = slugOrDash(seg[1]);
+    // Zuerst nach Titel, dann nach der (alten) ID — so gehen auch ältere
+    // Links weiter.
+    album = ALBUMS.find((a) => albumUrlName(a) === want)
+      || ALBUMS.find((a) => slugText(a.id) === want) || null;
     // Library: nur Alben, von denen der Besucher etwas geladen hat.
     if (album && screen === 'library' && !downloads.albumHasDownloads(album.id)) album = null;
-    if (album && seg[2]) {
-      const t = album.tracks.find((x) => x.id === parseInt(seg[2], 10));
-      if (t && (screen === 'music' || downloads.isDownloaded(album.id, t.id))) track = t.id;
-    }
   }
-  return { screen, album, track };
+  return { screen, album };
 };
 
-const buildPath = (screen, album, track) => {
+const buildPath = (screen, album) => {
   if (!ROUTE_SCREENS.includes(screen)) return '/';
-  let p = '/' + screen;
-  if (album && (screen === 'music' || screen === 'library')) {
-    p += '/' + encodeURIComponent(String(album.id).toLowerCase());
-    if (track) p += '/' + track;
+  // Wo es darunter weitere Seiten gibt (Music, Library), steht am Ende ein "/".
+  if (screen === 'music' || screen === 'library') {
+    if (!album) return '/' + screen + '/';
+    return '/' + screen + '/' + albumUrlName(album);
   }
-  return p;
+  return '/' + screen;
 };
 
 const SECTION_TITLES = {
@@ -2559,14 +2563,6 @@ const App = () => {
   const [musicActive, setMusicActive] = useState(
     route0.album ? Math.max(0, ALBUMS.findIndex((a) => a.id === route0.album.id)) : 0
   );
-  // Das zuletzt gewählte (oder per Link angegebene) Lied eines Albums —
-  // steht als Nummer in der Adresse. Gilt nur für genau dieses Album.
-  const [linked, setLinked] = useState(
-    route0.track && route0.album ? { screen: route0.screen, albumId: route0.album.id, track: route0.track } : null
-  );
-  const linkedTrack = linked && selectedAlbum && linked.screen === screen && linked.albumId === selectedAlbum.id
-    ? linked.track : null;
-  useEffect(() => { if (!selectedAlbum) setLinked(null); }, [selectedAlbum]);
   const [currentTrack, setCurrentTrack] = useState(null);
   const [currentAlbum, setCurrentAlbum] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -2667,29 +2663,23 @@ const App = () => {
   }, [screen]);
 
   // Adresszeile und Zustand abgleichen. Jeder Wechsel von Bereich oder
-  // Album erzeugt einen Verlaufseintrag (Zurück funktioniert), die Wahl
-  // eines Liedes im selben Album ersetzt nur den aktuellen.
+  // Album erzeugt einen Verlaufseintrag, damit Zurück funktioniert.
   const lastPathRef = useRef(null);
   useEffect(() => {
-    const path = buildPath(screen, selectedAlbum, linkedTrack);
-    const cur = window.location.pathname.replace(/\/+$/, '') || '/';
-    const last = lastPathRef.current;
+    const path = buildPath(screen, selectedAlbum);
+    const cur = window.location.pathname;
+    const first = lastPathRef.current === null;
     lastPathRef.current = path;
     if (cur === path) return;
-    const base = (x) => x.split('/').slice(0, 3).join('/');
-    if (last === null || (last.split('/').length > 2 && base(last) === base(path))) {
-      window.history.replaceState(null, '', path);
-    } else {
-      window.history.pushState(null, '', path);
-    }
-  }, [screen, selectedAlbum, linkedTrack]);
+    if (first) window.history.replaceState(null, '', path);
+    else window.history.pushState(null, '', path);
+  }, [screen, selectedAlbum]);
 
   useEffect(() => {
     const onPop = () => {
       const r = parsePath(window.location.pathname);
       setScreen((cur) => r.screen || (cur === 'landing' ? 'landing' : 'hub'));
       setSelectedAlbum(r.album);
-      setLinked(r.track && r.album ? { screen: r.screen, albumId: r.album.id, track: r.track } : null);
       if (r.album) {
         const i = ALBUMS.findIndex((a) => a.id === r.album.id);
         if (i >= 0) setMusicActive(i);
@@ -2778,12 +2768,6 @@ const App = () => {
     setPlayerPhase('closing');
     if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
     closeTimerRef.current = setTimeout(() => setPlayerPhase('closed'), 1050);
-  };
-
-  // Antippen eines Liedes in der Liste: abspielen und in die Adresse schreiben.
-  const handleRowPlay = (track, album) => {
-    setLinked({ screen, albumId: album.id, track: track.id });
-    handlePlay(track, album);
   };
 
   const handlePlay = (track, album) => {
@@ -2971,8 +2955,7 @@ const App = () => {
         <AlbumDetail
           album={selectedAlbum}
           onBack={() => setSelectedAlbum(null)}
-          onPlay={handleRowPlay}
-          focusTrack={linkedTrack}
+          onPlay={handlePlay}
           currentTrack={currentTrack}
           isPlaying={isPlaying}
           playerOpen={playerPhase === 'open'}
@@ -2994,8 +2977,7 @@ const App = () => {
           album={selectedAlbum}
           variant="library"
           onBack={() => setSelectedAlbum(null)}
-          onPlay={handleRowPlay}
-          focusTrack={linkedTrack}
+          onPlay={handlePlay}
           currentTrack={currentTrack}
           isPlaying={isPlaying}
           playerOpen={playerPhase === 'open'} />
